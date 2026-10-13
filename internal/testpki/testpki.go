@@ -10,8 +10,11 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"net"
+	"os"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -163,4 +166,55 @@ func KeyPEM(tb testing.TB, key crypto.Signer) []byte {
 		tb.Fatal(err)
 	}
 	return pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
+}
+
+// NoTest is a testing.TB for code outside tests, such as examples and
+// example programs. Its Fatal panics; it implements nothing else.
+var NoTest testing.TB = noTest{}
+
+type noTest struct{ testing.TB }
+
+func (noTest) Helper()                      {}
+func (noTest) Fatal(args ...any)            { panic(fmt.Sprint(args...)) }
+func (noTest) Fatalf(f string, args ...any) { panic(fmt.Sprintf(f, args...)) }
+
+// Dir is a directory of PEM files laid out like a cert-manager Secret:
+// tls.crt, tls.key and ca.crt.
+type Dir struct {
+	Path string
+	CA   *CA
+	Leaf *Leaf
+}
+
+// NewDir creates a CA and a leaf for localhost and writes them to path.
+func NewDir(tb testing.TB, path string) *Dir {
+	tb.Helper()
+	d := &Dir{Path: path, CA: NewCA(tb, "example CA")}
+	WriteFile(tb, d.File("ca.crt"), d.CA.PEM())
+	d.Rotate(tb, LeafOptions{})
+	return d
+}
+
+// File returns the path of name inside the directory.
+func (d *Dir) File(name string) string { return filepath.Join(d.Path, name) }
+
+// Rotate issues a new leaf from the directory's CA and writes it.
+func (d *Dir) Rotate(tb testing.TB, o LeafOptions) *Leaf {
+	tb.Helper()
+	d.Leaf = d.CA.Issue(tb, o)
+	WriteFile(tb, d.File("tls.crt"), d.Leaf.CertPEM)
+	WriteFile(tb, d.File("tls.key"), d.Leaf.KeyPEM)
+	return d.Leaf
+}
+
+// WriteFile replaces path atomically, as certificate managers do.
+func WriteFile(tb testing.TB, path string, data []byte) {
+	tb.Helper()
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		tb.Fatal(err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		tb.Fatal(err)
+	}
 }

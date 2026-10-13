@@ -14,7 +14,7 @@ import (
 func TestWatchRewrite(t *testing.T) {
 	ca := testpki.NewCA(t, "ca")
 	d := newPKIDir(t, ca.Issue(t, testpki.LeafOptions{}), ca.PEM(), nil)
-	r := newReloader(t, FromFiles(Files{Cert: d.files.Cert, Key: d.files.Key, Roots: d.files.Roots}))
+	r := newReloader(t, Files{Cert: d.files.Cert, Key: d.files.Key, Roots: d.files.Roots})
 
 	next := ca.Issue(t, testpki.LeafOptions{})
 	d.write(t, next, nil, nil)
@@ -72,11 +72,11 @@ func TestWatchKubernetesSecretVolume(t *testing.T) {
 	leaf := ca.Issue(t, testpki.LeafOptions{})
 	vol.update(t, map[string][]byte{"tls.crt": leaf.CertPEM, "tls.key": leaf.KeyPEM, "ca.crt": ca.PEM()})
 
-	r := newReloader(t, FromFiles(Files{
+	r := newReloader(t, Files{
 		Cert:  filepath.Join(vol.dir, "tls.crt"),
 		Key:   filepath.Join(vol.dir, "tls.key"),
 		Roots: filepath.Join(vol.dir, "ca.crt"),
-	}))
+	})
 
 	for i := 2; i <= 4; i++ {
 		leaf = ca.Issue(t, testpki.LeafOptions{})

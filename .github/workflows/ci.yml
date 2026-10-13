@@ -10,29 +10,110 @@ permissions:
 
 jobs:
   test:
+    runs-on: ubuntu-latest
     strategy:
+      # Keep going when one version fails, so the others still report.
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        go: ["1.22", "stable"]
-    runs-on: ${{ matrix.os }}
+        # From the minimum in go.mod through the latest release.
+        go: ["1.24", "1.25", "1.26", "1.27"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go }}
+          cache-dependency-path: "**/go.sum"
       - name: gofmt
-        if: matrix.os == 'ubuntu-latest'
         run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
-      - name: vet
-        run: go vet ./...
-      - name: test
-        run: go test -race ./...
+      - run: go vet ./...
+      - run: go test -race -shuffle=on ./...
       - name: grpccreds
         working-directory: grpccreds
         run: |
           go vet ./...
-          go test -race ./...
-      - name: fuzz (short)
-        if: matrix.os == 'ubuntu-latest' && matrix.go == 'stable'
-        run: go test -run '^$' -fuzz FuzzParseMaterial -fuzztime 30s .
+          go test -race -shuffle=on ./...
+      - name: coverage (must stay at or above 90%)
+        run: |
+          go test -coverpkg=./... -coverprofile=cover.out ./... > /dev/null
+          total=$(go tool cover -func=cover.out | awk '/^total:/ {sub("%", "", $3); print $3}')
+          echo "total coverage: ${total}%"
+          awk -v t="$total" 'BEGIN { exit !(t >= 90) }' || { echo "::error::coverage ${total}% is below 90%"; exit 1; }
+
+  other-os:
+    # File watching falls back to polling off Linux; make sure everything
+    # else works there.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+      - run: go vet ./...
+      - run: go test -short ./...
+      - name: grpccreds
+        working-directory: grpccreds
+        run: go test -short ./...
+
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+      - run: go test -run '^$' -fuzz FuzzParseMaterial -fuzztime 60s .
+
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+
+      # Required: fails the job if any benchmark fails or panics.
+      - name: run benchmarks
+        run: go test -run '^$' -bench . -benchmem -benchtime=200ms -count=6 . | tee bench-new.txt
+
+      # On pull requests, benchmark the base branch the same way for comparison.
+      # Timings on shared runners are too noisy to gate on, so the comparison is
+      # reported in the job summary rather than failing the job; allocation
+      # regressions on the handshake path are gated by TestHotPathAllocations.
+      - name: benchmark base branch
+        if: github.event_name == 'pull_request'
+        run: |
+          git worktree add ../base "origin/${{ github.base_ref }}"
+          cd ../base
+          if ls *_test.go >/dev/null 2>&1 && grep -lq 'func Benchmark' *_test.go; then
+            go test -run '^$' -bench . -benchmem -benchtime=200ms -count=6 . > "$GITHUB_WORKSPACE/bench-base.txt" || true
+          fi
+
+      - name: summarize
+        if: always()
+        continue-on-error: true
+        run: |
+          go install golang.org/x/perf/cmd/benchstat@latest
+          {
+            echo '## Benchmarks'
+            echo
+            echo '```'
+            if [ -s bench-base.txt ]; then
+              echo "base: ${{ github.base_ref }}   new: this PR"
+              "$(go env GOPATH)/bin/benchstat" base=bench-base.txt new=bench-new.txt
+            else
+              "$(go env GOPATH)/bin/benchstat" new=bench-new.txt
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: benchmarks
+          path: bench-*.txt

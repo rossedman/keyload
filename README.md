@@ -1,194 +1,191 @@
 # keyload
 
+[![CI](https://github.com/rossedman/keyload/actions/workflows/ci.yml/badge.svg)](https://github.com/rossedman/keyload/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/rossedman/keyload.svg)](https://pkg.go.dev/github.com/rossedman/keyload)
 
-keyload is a Go library that hot-reloads TLS material in both directions:
-leaf certificates and keys, and the CA bundles used to verify peers. It
-validates every reload before using it, keeps serving the last good material
-when a reload fails, and never needs a restart. It is built for
-cert-manager-style rotation of short-lived certificates and mTLS.
+Go library for **reloading TLS certificates and CA bundles at runtime**. When cert-manager (or anything else) rotates your certificates, servers and clients pick up the new files on their next handshake, with no restart.
 
-The core module depends on nothing but the standard library.
+Use it for short-lived certificates and mTLS, where both sides need to follow a rotation: the certificate you present *and* the CAs you trust.
 
-```
+- Reloads both directions: your certificate and key, and the CA bundles used to verify servers and clients
+- Never applies bad material: an expired certificate, a mismatched key or a half-written file is rejected, and the last good one keeps serving
+- Works with Kubernetes Secret volumes out of the box (including the `..data` symlink swap)
+- CA rotation without an outage: keep outgoing CAs trusted for an overlap window
+- crypto/tls still does the verification; keyload doesn't need `InsecureSkipVerify` for servers, HTTP clients or gRPC
+- Prometheus metrics and reload events, so you hear about a bad certificate before it expires
+- No dependencies outside the standard library (gRPC support is a separate module)
+
+```sh
 go get github.com/rossedman/keyload
-go get github.com/rossedman/keyload/grpccreds   # optional, for grpc-go
 ```
 
-## Why
-
-`crypto/tls` lets you swap a leaf certificate per handshake
-(`GetCertificate`, `GetClientCertificate`). There is no matching hook for the
-trust side on clients: `RootCAs` is fixed once the config is in use, and
-`x509.CertPool` is not safe to change while handshakes read it
-([golang/go#70946](https://github.com/golang/go/issues/70946)). Requests for
-dynamic `RootCAs`/`ClientCAs` have been open for years
-([#16066](https://github.com/golang/go/issues/16066),
-[#22836](https://github.com/golang/go/issues/22836)), and the common
-workaround, `InsecureSkipVerify` plus hand-written verification, is easy to
-get subtly wrong ([#64796](https://github.com/golang/go/issues/64796)).
-Meanwhile a bad certificate pushed to a pod tends to crash-loop it instead of
-falling back to the old one
-([argocd-agent#1057](https://github.com/argoproj-labs/argocd-agent/issues/1057)).
-
-## Usage
+## Quick start
 
 ```go
-r, err := keyload.New(ctx, keyload.FromFiles(keyload.Files{
-    Cert: "/tls/tls.crt", Key: "/tls/tls.key",
-    Roots: "/tls/ca.crt", ClientCAs: "/tls/ca.crt",
-}), keyload.MinRemaining(time.Hour))
+r, err := keyload.New(keyload.Files{
+	Cert:      "/tls/tls.crt",
+	Key:       "/tls/tls.key",
+	Roots:     "/tls/ca.crt", // CAs to verify servers
+	ClientCAs: "/tls/ca.crt", // CAs to verify clients
+})
 if err != nil {
-    log.Fatal(err) // the first load must be valid
+	log.Fatal(err) // the first load must be valid
 }
 defer r.Close()
 
-// Server: certificates and client CAs follow reloads.
+// Server: the certificate and client CAs follow reloads.
 srv := &http.Server{TLSConfig: r.ServerConfig(&tls.Config{
-    ClientAuth: tls.RequireAndVerifyClientCert,
-    NextProtos: []string{"h2", "http/1.1"}, // set here for HTTP/2, see below
+	ClientAuth: tls.RequireAndVerifyClientCert,
 })}
 
-// Client: a fresh tls.Config with the current roots for every connection.
-tr := &http.Transport{ForceAttemptHTTP2: true}
-if err := r.ConfigureTransport(tr, &tls.Config{}); err != nil {
-    log.Fatal(err) // refuses transports that use an HTTPS proxy
+// Client: every connection uses the current certificate and roots.
+tr := &http.Transport{}
+if err := r.ConfigureTransport(tr, nil); err != nil {
+	log.Fatal(err)
 }
 ```
 
-gRPC:
+That's the whole setup. When the files change, keyload validates them and swaps them in. When they're bad, it keeps the old ones and tells you:
 
 ```go
-creds := grpccreds.New(r, grpccreds.WithTLSConfig(&tls.Config{
-    ClientAuth: tls.RequireAndVerifyClientCert,
+keyload.New(files, keyload.OnReload(func(ev keyload.Event) {
+	if ev.Err != nil {
+		log.Printf("TLS reload rejected, still serving generation %d: %v", ev.Generation, ev.Err)
+	}
 }))
-s := grpc.NewServer(grpc.Creds(creds))
-cc, err := grpc.NewClient(addr, grpc.WithTransportCredentials(grpccreds.New(r)))
 ```
 
-## How it works
+📖 **Docs and an interactive reload simulator: https://rossedman.github.io/keyload/**
 
-All material lives in one immutable `Snapshot`, swapped with
-`atomic.Pointer`. Handshakes read the current snapshot; reloads build a new
-one off to the side and swap it in only after it passes validation. Nothing is
-mutated in place, which removes the `CertPool` race entirely.
+## Examples
 
-A reload:
+Each example is a small runnable program (`go run ./examples/<name>`). The commands to try it are at the top of each file. `gencerts` makes throwaway certificates to try them with.
 
-1. is triggered by a file change, a signal, a timer or a call to `Reload`;
-2. reads every source file, retrying up to 3 times with backoff if a read
-   fails or the files look mid-write (truncated PEM, key not matching
-   certificate);
-3. validates: the key matches the leaf; every certificate in the leaf chain
-   is inside its validity window, with an optional minimum remaining lifetime
-   (`MinRemaining`); optionally the leaf chains to the new roots
-   (`RequireChain`); each configured CA bundle has at least one certificate;
-4. builds fresh `CertPool`s and a new snapshot with `Generation + 1`;
-5. swaps it in. On any failure the old snapshot stays, an error event is
-   emitted and a failure counter goes up.
+| Example | Shows |
+|---|---|
+| [`gencerts`](examples/gencerts/main.go) | Writes a demo CA and certificate, and rotates the certificate on demand |
+| [`server`](examples/server/main.go) | An mTLS HTTPS server whose certificate and client CAs reload, with `SIGHUP` for on-demand reloads |
+| [`client`](examples/client/main.go) | An mTLS HTTP client whose certificate and trusted CAs reload |
+| [`proxy`](examples/proxy/main.go) | An HTTPS client behind an HTTP proxy, using Config mode |
+| [`metrics`](examples/metrics/main.go) | Prometheus metrics, structured reload logs and alerting rules |
+| [`kubernetes`](examples/kubernetes/app.yaml) | A cert-manager `Certificate` mounted into a Deployment |
+| [`grpccreds`](grpccreds/example_test.go) | gRPC server and client with mutual TLS |
 
-Reloading unchanged material is a no-op, so frequent triggers are cheap.
+There are also runnable snippets in [`example_test.go`](example_test.go), which appear on pkg.go.dev.
 
-### Integration modes
+## Using it
 
-| Mode | For | How | Verification |
-|---|---|---|---|
-| `ServerConfig` | any `crypto/tls` server | `GetConfigForClient` returns a config built from the current snapshot | stdlib |
-| `DialTLSContext` / `ConfigureTransport` | `http.Transport`, raw TLS dials | fresh `tls.Config` per connection with current `RootCAs` | stdlib |
-| `grpccreds` | grpc-go clients and servers | `TransportCredentials` building TLS credentials from the current snapshot | stdlib |
-| `ClientConfig` ("Config mode") | libraries that only take a `*tls.Config` | `InsecureSkipVerify` plus `VerifyConnection` against the current roots | keyload, matching stdlib |
+| You have | Use | Verification |
+|---|---|---|
+| Any `crypto/tls` server (`http.Server`, raw listeners) | `r.ServerConfig(base)` | crypto/tls |
+| An `http.Transport` or your own TLS dials | `r.ConfigureTransport(tr, base)` or `r.DialTLSContext(base)` | crypto/tls |
+| grpc-go | `grpccreds.New(r)` from `github.com/rossedman/keyload/grpccreds` | crypto/tls |
+| A library that only accepts a `*tls.Config` | `r.ClientConfig(base)` ("Config mode") | keyload, matching crypto/tls |
 
-Notes:
+`base` is an optional `*tls.Config` with your other settings (`ClientAuth`, `MinVersion`, `ServerName`, ...). keyload fills in the certificates and CAs from the current files.
 
-- **Server mode** builds one config per snapshot generation and caches it.
-  It is cloned from your base config, so session ticket keys, cipher suites
-  and `ClientAuth` carry over and session resumption keeps working across
-  reloads. Resumed sessions have their client certificate re-checked against
-  the current client CAs, so removing a CA also stops its clients from
-  resuming old sessions. Handshakes use configs built from `base`, so set
-  `NextProtos` there: `http.Server` and `httptest` add `h2` to a copy of the
-  config, which keyload does not see.
-- **Dialer mode** doesn't work through an HTTPS proxy, because
-  `http.Transport` does its own TLS with `TLSClientConfig` for proxied
-  requests. `ConfigureTransport` detects a configured proxy and returns
-  `ErrProxyConfigured`. Use Config mode there.
-- **Config mode** is the only place keyload verifies certificates itself. It
-  refuses to build without `ServerName`, the classic `InsecureSkipVerify`
-  bug. It verifies with `x509.Certificate.Verify` and the same options as
-  crypto/tls (snapshot roots, peer intermediates, `DNSName = ServerName`,
-  `ServerAuth`, the config's clock), on every handshake including resumed
-  ones, and chains your own `VerifyConnection` after its own.
-  `ConnectionState.VerifiedChains` is empty in this mode.
+```go
+creds := grpccreds.New(r, grpccreds.WithTLSConfig(&tls.Config{ClientAuth: tls.RequireAndVerifyClientCert}))
+srv := grpc.NewServer(grpc.Creds(creds))
+conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(grpccreds.New(r)))
+```
 
-### Sources and triggers
+## Files
 
-- `FromFiles(Files{...})` reads PEM files and watches their directories with
-  inotify. Watching directories and following symlink targets handles the
-  Kubernetes Secret volume `..data` symlink swap. Bursts of events are
-  debounced. On NFS, FUSE, SMB and similar filesystems, when inotify limits
-  are hit, or on non-Linux systems, it polls every 30 seconds instead.
-- `OnSignal(syscall.SIGHUP)`, `PollEvery(d)` and `r.Reload(ctx)` for manual
-  control.
-- Any other `Source` (Vault, a secrets API) just returns raw PEM in a
-  `Material`, and may implement `Watcher` to push change notifications.
+| Field | Description |
+|---|---|
+| `Cert` | Your certificate, optionally followed by intermediates. Leave empty for a client that only verifies servers. |
+| `Key` | The private key for `Cert`. Set together with `Cert`. |
+| `Roots` | CA bundle for verifying servers (client side). Empty means the system roots. |
+| `ClientCAs` | CA bundle for verifying clients (server side). |
 
-### CA rotation overlap
+keyload watches the files' directories with inotify, so a Kubernetes Secret update is seen within moments. Mount the whole Secret as a directory: a `subPath` mount never sees updates. On NFS, FUSE and other filesystems where inotify misses changes, or on macOS and Windows, it checks every 30 seconds instead.
 
-With `OverlapWindow(24 * time.Hour)`, a CA that disappears from a bundle stays
-in the pool for 24 hours after it was removed. Peers holding certificates from
-the outgoing CA keep working while they rotate. When the window ends the CA is
-dropped automatically.
+Other sources (Vault, a secrets API) implement `Source` and return PEM. `keyload.SourceFunc` turns a function into one.
 
-### Observability
+## What gets rejected
 
-`OnReload(func(Event))` reports every reload that changed the snapshot or
-failed: the trigger, the result, the generation, the rejection reason
-(naming the file) and the subjects and serials that were added or removed.
-Events never contain key material.
+Every reload is validated before it's used. If any check fails, the current certificates stay in service, an `Event` with the reason is sent to `OnReload`, and `keyload_reload_total{result="invalid"}` goes up.
 
-`MetricsHandler(r)` serves Prometheus text format without a client library:
+| Check | Error |
+|---|---|
+| The key matches the certificate | `ErrKeyMismatch` |
+| Every certificate in the chain is inside its validity window | `ErrExpired`, `ErrNotYetValid` |
+| At least `MinRemaining(d)` is left before the chain expires | `ErrExpiresTooSoon` |
+| The certificate chains to the new roots (with `RequireChain()`) | `ErrChainVerification` |
+| Each CA bundle has at least one certificate | `ErrEmptyBundle` |
+| No truncated PEM | `ErrTruncatedPEM` |
+
+Files that look half-written (a new certificate next to the old key, a truncated bundle) are retried 3 times with a short backoff first, so a certificate manager that writes files one by one doesn't cause false alarms.
+
+## Options
+
+```go
+r, err := keyload.New(files,
+	keyload.MinRemaining(time.Hour),        // reject certificates that expire within the hour
+	keyload.RequireChain(),                 // reject a certificate that doesn't chain to the new roots
+	keyload.OverlapWindow(24*time.Hour),    // keep removed CAs trusted for a day
+	keyload.OnSignal(syscall.SIGHUP),       // reload on SIGHUP
+	keyload.PollEvery(5*time.Minute),       // and on a timer
+	keyload.OnReload(func(keyload.Event) {}),
+	keyload.Name("api"),                    // label metrics when running several reloaders
+)
+```
+
+**Rotating a CA.** With `OverlapWindow`, a CA that's removed from a bundle stays trusted for that long after it's removed. Add the new CA, move certificates over, remove the old CA: peers that haven't rotated yet keep working until the window ends, and then the old CA is dropped automatically.
+
+## Observability
+
+`keyload.MetricsHandler(r)` serves Prometheus text format without a client library. `r.Stats()` returns the same numbers for other systems.
 
 | Metric | Meaning |
 |---|---|
-| `keyload_generation` | current snapshot generation |
-| `keyload_reload_total{result}` | `success`, `invalid`, `read_error` |
-| `keyload_cert_not_after_seconds{role}` | expiry of the leaf chain and of the earliest CA in each bundle (`leaf`, `roots`, `client_cas`), so alerts can fire before expiry |
-| `keyload_last_success_timestamp_seconds` | catches a watcher that silently stopped |
+| `keyload_generation` | Current snapshot generation |
+| `keyload_reload_total{result}` | Reloads by result: `success`, `invalid`, `read_error` |
+| `keyload_cert_not_after_seconds{role}` | Expiry of your certificate chain and of the earliest CA in each bundle (`leaf`, `roots`, `client_cas`) |
+| `keyload_last_success_timestamp_seconds` | Time of the last successful reload |
 
-`r.Stats()` returns the same numbers for other metrics systems.
+```yaml
+- alert: CertificateExpiresSoon
+  expr: keyload_cert_not_after_seconds - time() < 7 * 86400
+- alert: CertificateReloadFailing
+  expr: increase(keyload_reload_total{result!="success"}[15m]) > 0
+```
+
+Events name the file and the reason for a rejection, and the subjects and serials that changed on success. They never include key material.
+
+## Good to know
+
+- **HTTP/2 servers.** Set `NextProtos: []string{"h2", "http/1.1"}` in the base config you pass to `ServerConfig`. `http.Server` adds `h2` to a copy of its config, which keyload doesn't see.
+- **HTTPS proxies.** `http.Transport` skips `DialTLSContext` for proxied HTTPS, so `ConfigureTransport` returns `ErrProxyConfigured`. Use `ClientConfig` there (see the [`proxy`](examples/proxy/main.go) example).
+- **Config mode** sets `InsecureSkipVerify` and verifies in `VerifyConnection` with the same options crypto/tls uses, on every handshake including resumed ones. It requires `ServerName`. `ConnectionState.VerifiedChains` is empty in this mode. It's tested against crypto/tls on thousands of generated chains; see [SECURITY.md](SECURITY.md).
+- **Session resumption** keeps working across reloads on servers. A resumed session's client certificate is re-checked against the current client CAs, so removing a CA also stops its clients from resuming.
+- **Existing connections** keep the certificates they were established with. Only new handshakes use reloaded material.
+
+## Performance
+
+The handshake path takes no locks and makes no allocations: `ServerConfig` hands each handshake a config cached per reload. Representative numbers from `go test -bench . -benchmem` on a 4-vCPU Xeon VM:
+
+| Operation | Time | Allocs |
+|---|---|---|
+| Server handshake overhead (cached config) | ~2.5 ns | 0 |
+| First handshake after a reload (builds the config) | ~430 ns | 5 |
+| Client connection overhead (`DialTLSContext`) | ~260 ns | 2 |
+| Config mode verification vs. crypto/tls's own | ~177 µs vs. ~180 µs | same |
+| Reload of unchanged files | ~2.4 µs | 3 |
+
+CI runs the benchmarks on each push and pull request, and `TestHotPathAllocations` fails the build if the handshake path starts allocating.
 
 ## Testing
 
-- **Rotation under load**: leaf, roots and client CAs are rotated on both
-  sides mid-traffic for HTTP/1.1, HTTP/2 and gRPC, with a full handshake per
-  request; the tests require zero failures.
-- **Bad-reload drills**: truncated PEM, mismatched key, expired and
-  not-yet-valid leaves, too-short lifetime, empty bundles, half-written files,
-  chain mismatch and missing files. Each must keep the old snapshot and
-  report the right reason.
-- **Kubernetes Secret volume**: the kubelet's `..data` symlink swap is
-  reproduced on a real filesystem and watched with inotify.
-- **Differential verification**: 2,000 generated chains (wrong host, IP SANs,
-  expired intermediates, wrong EKU, name constraints, missing intermediates,
-  untrusted roots) are verified by both crypto/tls and Config mode over real
-  handshakes; any disagreement fails the build.
-- **Fuzzing** of the PEM parsing and validation path (`FuzzParseMaterial`).
+Besides unit tests, CI runs:
 
-```
-go test -race ./...
-(cd grpccreds && go test -race ./...)
-go test -run '^$' -fuzz FuzzParseMaterial -fuzztime 1m .
-```
-
-## Status
-
-Pre-1.0. The API may still change. Config mode should get an external
-security review before v1.0; see [SECURITY.md](SECURITY.md).
-
-Not in scope: issuing or renewing certificates (ACME, cert-manager and Vault
-PKI do that; keyload consumes what they write), revocation checking (OCSP,
-CRLs), and replacing SPIFFE (teams on SPIRE should use go-spiffe).
+- **Rotation under load**: certificates and CAs rotated on both sides mid-traffic over HTTP/1.1, HTTP/2 and gRPC, with zero failed requests allowed.
+- **Bad-reload drills**: every kind of bad file must keep the old certificates and report the right reason.
+- **Kubernetes Secret volumes**: the kubelet's `..data` symlink swap, on a real filesystem.
+- **Differential verification**: 2,000 generated chains (wrong host, IP SANs, expired intermediates, wrong key usage, name constraints) checked by crypto/tls and by Config mode. Any disagreement fails the build.
+- **Fuzzing** of the PEM parsing and validation.
 
 ## License
 
-MIT
+[MIT](LICENSE)

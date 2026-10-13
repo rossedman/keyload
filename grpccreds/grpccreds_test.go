@@ -41,7 +41,7 @@ func material(leaf *testpki.Leaf, roots, clientCAs []byte) keyload.Material {
 
 func newReloader(t *testing.T, src keyload.Source) *keyload.Reloader {
 	t.Helper()
-	r, err := keyload.New(context.Background(), src, keyload.OverlapWindow(time.Hour))
+	r, err := keyload.New(src, keyload.OverlapWindow(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

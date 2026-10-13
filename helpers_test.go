@@ -117,7 +117,7 @@ func leafMaterial(leaf *testpki.Leaf, roots, clientCAs []byte) Material {
 
 func newReloader(t testing.TB, src Source, opts ...Option) *Reloader {
 	t.Helper()
-	r, err := New(context.Background(), src, append([]Option{fastRetries()}, opts...)...)
+	r, err := New(src, append([]Option{fastRetries()}, opts...)...)
 	if err != nil {
 		t.Fatal(err)
 	}

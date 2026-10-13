@@ -375,8 +375,8 @@ func testRotationUnderLoad(t *testing.T, h2 bool) {
 	cliDir := newPKIDir(t, oldCA.Issue(t, testpki.LeafOptions{}), oldCA.PEM(), nil)
 	srvFiles, cliFiles := srvDir.files, cliDir.files
 	srvFiles.Roots, cliFiles.ClientCAs = "", ""
-	srvR := newReloader(t, FromFiles(srvFiles), OverlapWindow(time.Hour))
-	cliR := newReloader(t, FromFiles(cliFiles), OverlapWindow(time.Hour))
+	srvR := newReloader(t, srvFiles, OverlapWindow(time.Hour))
+	cliR := newReloader(t, cliFiles, OverlapWindow(time.Hour))
 
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, "ok") }))
 	srv.EnableHTTP2 = h2
@@ -471,4 +471,21 @@ func testRotationUnderLoad(t *testing.T, h2 bool) {
 		t.Errorf("server generation = %d, want at least 5", g)
 	}
 	t.Logf("%d requests, 0 failures", reqs.Load())
+}
+
+func TestServerModeChainsVerifyConnection(t *testing.T) {
+	ca := testpki.NewCA(t, "ca")
+	r := newReloader(t, &memSource{m: leafMaterial(ca.Issue(t, testpki.LeafOptions{}), nil, ca.PEM())})
+	var calls atomic.Int32
+	srvCfg := r.ServerConfig(&tls.Config{
+		ClientAuth:       tls.RequireAndVerifyClientCert,
+		VerifyConnection: func(tls.ConnectionState) error { calls.Add(1); return errors.New("denied by policy") },
+	})
+	client := &tls.Config{ServerName: "localhost", RootCAs: pool(ca.Cert), Certificates: []tls.Certificate{ca.Issue(t, testpki.LeafOptions{}).TLS(t)}}
+	if _, err := handshake(t, client, srvCfg); err == nil {
+		t.Error("caller's VerifyConnection did not run")
+	}
+	if calls.Load() != 1 {
+		t.Errorf("VerifyConnection calls = %d, want 1", calls.Load())
+	}
 }

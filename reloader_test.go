@@ -15,7 +15,7 @@ import (
 func TestNewRejectsInvalidFirstLoad(t *testing.T) {
 	ca := testpki.NewCA(t, "ca")
 	leaf := ca.Issue(t, testpki.LeafOptions{NotAfter: time.Now().Add(-time.Minute)})
-	_, err := New(context.Background(), &memSource{m: leafMaterial(leaf, ca.PEM(), nil)}, fastRetries())
+	_, err := New(&memSource{m: leafMaterial(leaf, ca.PEM(), nil)}, fastRetries())
 	if !errors.Is(err, ErrExpired) {
 		t.Fatalf("New() error = %v, want ErrExpired", err)
 	}
@@ -171,7 +171,7 @@ func TestBadReloadDrills(t *testing.T) {
 func TestReadErrorKeepsSnapshot(t *testing.T) {
 	ca := testpki.NewCA(t, "ca")
 	d := newPKIDir(t, ca.Issue(t, testpki.LeafOptions{}), ca.PEM(), ca.PEM())
-	r := newReloader(t, FromFiles(d.files), DisableWatch())
+	r := newReloader(t, d.files, DisableWatch())
 	before := r.Current()
 
 	if err := os.Remove(d.files.Key); err != nil {
@@ -342,6 +342,43 @@ func TestOverlapExpiryTriggersReload(t *testing.T) {
 	}
 }
 
+// An overlap window ends on time even when the files on disk are bad at that
+// moment: keep-last-good must not keep an outgoing CA trusted.
+func TestOverlapEndsWhileFilesAreInvalid(t *testing.T) {
+	clock := &fakeClock{t: time.Now()}
+	oldCA, newCA := testpki.NewCA(t, "old"), testpki.NewCA(t, "new")
+	leaf := newCA.Issue(t, testpki.LeafOptions{})
+	src := &memSource{m: leafMaterial(leaf, oldCA.PEM(), nil)}
+	evs := newEvents()
+	r := newReloader(t, src, OverlapWindow(time.Hour), withClock(clock.Now), evs.option())
+	src.set(leafMaterial(leaf, newCA.PEM(), nil))
+	if err := r.Reload(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	m := leafMaterial(leaf, newCA.PEM(), nil)
+	m.Key = []byte("broken")
+	src.set(m)
+	clock.Add(2 * time.Hour)
+	evs.drain()
+	if err := r.Reload(context.Background()); err == nil {
+		t.Fatal("broken key accepted")
+	}
+	s := r.Current()
+	if len(s.RootCerts) != 1 || !s.RootCerts[0].Equal(newCA.Cert) {
+		t.Fatalf("roots = %d certificates, want only the new CA", len(s.RootCerts))
+	}
+	if !s.Certificate.Leaf.Equal(leaf.Cert) {
+		t.Error("leaf changed")
+	}
+	if ev := evs.next(t, time.Second); ev.Trigger != TriggerOverlap || len(ev.Removed) != 1 || ev.Removed[0].Subject != "CN=old" {
+		t.Errorf("first event = %+v, want the old CA removed by the overlap trigger", ev)
+	}
+	if ev := evs.next(t, time.Second); ev.Result != ResultInvalid {
+		t.Errorf("second event = %+v, want the rejected key", ev)
+	}
+}
+
 func TestOverlapCARestored(t *testing.T) {
 	oldCA, newCA := testpki.NewCA(t, "old"), testpki.NewCA(t, "new")
 	src := &memSource{m: Material{Roots: oldCA.PEM()}}
@@ -439,5 +476,43 @@ func TestEventsNeverContainKeyMaterial(t *testing.T) {
 		if ev.Err != nil && strings.Contains(ev.Err.Error(), "c2VjcmV0") {
 			t.Errorf("event error leaks key bytes: %v", ev.Err)
 		}
+	}
+}
+
+func TestSourceFuncAndFilesErrors(t *testing.T) {
+	ca := testpki.NewCA(t, "ca")
+	r := newReloader(t, SourceFunc(func(context.Context) (*Material, error) {
+		return &Material{Roots: ca.PEM()}, nil
+	}))
+	if r.Current().Roots == nil {
+		t.Error("SourceFunc material not loaded")
+	}
+	if _, err := New(Files{Cert: "tls.crt"}, fastRetries()); err == nil {
+		t.Error("Files with Cert but no Key accepted")
+	}
+	if _, err := New(&memSource{m: Material{Cert: []byte("x")}}, fastRetries()); err == nil {
+		t.Error("Material with Cert but no Key accepted")
+	}
+	if _, err := New(&memSource{m: Material{Cert: []byte{}, Key: []byte("x")}}, fastRetries()); !errors.Is(err, ErrEmptyBundle) {
+		t.Errorf("empty certificate: err = %v, want ErrEmptyBundle", err)
+	}
+}
+
+func TestReloadErrorMessage(t *testing.T) {
+	err := &ReloadError{Result: ResultReadError, Err: os.ErrNotExist}
+	if got := err.Error(); got != "keyload: read failed: file does not exist" {
+		t.Errorf("Error() = %q", got)
+	}
+	err = &ReloadError{Result: ResultInvalid, Role: RoleKey, Origin: "/tls/tls.key", Err: ErrKeyMismatch}
+	if got := err.Error(); got != "keyload: invalid material (key /tls/tls.key): private key does not match the leaf certificate" {
+		t.Errorf("Error() = %q", got)
+	}
+}
+
+func TestSortInfos(t *testing.T) {
+	s := []CertInfo{{Role: RoleRoots, Subject: "b"}, {Role: RoleRoots, Subject: "a", Serial: "2"}, {Role: RoleLeaf}, {Role: RoleRoots, Subject: "a", Serial: "1"}}
+	sortInfos(s)
+	if s[0].Role != RoleLeaf || s[1].Serial != "1" || s[2].Serial != "2" || s[3].Subject != "b" {
+		t.Errorf("sortInfos = %+v", s)
 	}
 }

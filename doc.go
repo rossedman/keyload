@@ -1,36 +1,28 @@
-// Package keyload hot-reloads TLS material in both directions: leaf
-// certificates and keys, and the CA bundles used to verify peers.
+// Package keyload reloads TLS certificates, keys and CA bundles while a
+// server or client keeps running, so certificate rotation never needs a
+// restart.
 //
-// Every reload is validated before it is used. A reload that fails keeps the
-// last good material in service and reports the failure, so a bad rotation
-// never takes a service down and never needs a restart.
+// A Reloader loads TLS material from a [Source] (usually [Files]), validates
+// it and keeps it in an immutable [Snapshot]. When the files change, it
+// validates the new material and swaps it in atomically. If the new material
+// is bad (an expired certificate, a key that doesn't match, a half-written
+// file), the last good snapshot stays in service and the failure is reported
+// through [OnReload] and the metrics.
 //
-// All material lives in one immutable [Snapshot] that is swapped atomically.
-// Handshakes read the current snapshot; reloads build a new one off to the
-// side and swap it in only after it passes validation. Nothing is mutated in
-// place, so there is no data race on [x509.CertPool].
+//	r, err := keyload.New(keyload.Files{
+//		Cert: "/tls/tls.crt", Key: "/tls/tls.key",
+//		Roots: "/tls/ca.crt", ClientCAs: "/tls/ca.crt",
+//	})
 //
-// # Integration modes
+//	// Servers: certificate and client CAs follow reloads.
+//	srv := &http.Server{TLSConfig: r.ServerConfig(nil)}
 //
-// The guiding rule is to let crypto/tls verify certificates whenever
-// possible:
+//	// Clients: every connection uses the current roots and certificate.
+//	tr := &http.Transport{}
+//	err = r.ConfigureTransport(tr, nil)
 //
-//   - [Reloader.ServerConfig]: any crypto/tls server. Uses GetConfigForClient
-//     to hand out a config built from the current snapshot. Stdlib
-//     verification.
-//   - [Reloader.DialTLSContext] and [Reloader.ConfigureTransport]: HTTP
-//     clients and raw TLS dials. Builds a fresh tls.Config per connection
-//     with the current roots. Stdlib verification.
-//   - The grpccreds module: grpc-go clients and servers. Stdlib verification.
-//   - [Reloader.ClientConfig]: for libraries that only accept a *tls.Config.
-//     Sets InsecureSkipVerify and verifies in VerifyConnection against the
-//     current roots, with the same options crypto/tls uses. This is the only
-//     place keyload performs verification itself.
-//
-// # Sources and triggers
-//
-// Material comes from a [Source]. [FromFiles] reads PEM files and watches
-// their directories, which handles the Kubernetes Secret volume ..data
-// symlink swap. Reloads can also be triggered by a signal ([OnSignal]), a
-// timer ([PollEvery]) or a direct call to [Reloader.Reload].
+// The grpccreds module does the same for grpc-go, and
+// [Reloader.ClientConfig] covers libraries that only accept a *tls.Config.
+// Every mode except ClientConfig leaves certificate verification to
+// crypto/tls.
 package keyload

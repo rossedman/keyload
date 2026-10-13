@@ -61,10 +61,12 @@ type retiredCert struct {
 	until time.Time
 }
 
-// New loads material from src, validates it and starts watching for changes.
-// It returns an error if the first load is invalid. ctx bounds the first load
-// only; background reloads run until [Reloader.Close].
-func New(ctx context.Context, src Source, opts ...Option) (*Reloader, error) {
+// New loads material from src, validates it and starts watching for changes,
+// until [Reloader.Close]. It returns an error if the first load is invalid,
+// so a service with bad material fails at startup rather than serving it.
+//
+//	r, err := keyload.New(keyload.Files{Cert: "tls.crt", Key: "tls.key", Roots: "ca.crt"})
+func New(src Source, opts ...Option) (*Reloader, error) {
 	o := defaultOptions()
 	for _, opt := range opts {
 		opt(&o)
@@ -76,7 +78,7 @@ func New(ctx context.Context, src Source, opts ...Option) (*Reloader, error) {
 		retiredClientCAs: map[[32]byte]retiredCert{},
 		triggers:         make(chan Trigger, 1),
 	}
-	if err := r.reload(ctx, TriggerInitial); err != nil {
+	if err := r.reload(context.Background(), TriggerInitial); err != nil {
 		return nil, err
 	}
 
@@ -172,6 +174,10 @@ func (r *Reloader) reload(ctx context.Context, trigger Trigger) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	// Outgoing CAs leave the pools when their window ends, whatever is on
+	// disk: a bad file must not keep an old CA trusted.
+	r.expireOverlap()
+
 	var (
 		next *Snapshot
 		rr   map[[32]byte]retiredCert
@@ -233,6 +239,33 @@ func (r *Reloader) reload(ctx context.Context, trigger Trigger) error {
 	return nil
 }
 
+// expireOverlap drops retired CAs whose overlap window has ended from the
+// snapshot in service. Called with r.mu held.
+func (r *Reloader) expireOverlap() {
+	prev := r.cur.Load()
+	if prev == nil {
+		return
+	}
+	now := r.opts.now()
+	rr, rc := pruneRetired(r.retiredRoots, now), pruneRetired(r.retiredClientCAs, now)
+	if len(rr) == len(r.retiredRoots) && len(rc) == len(r.retiredClientCAs) {
+		return
+	}
+	next := *prev
+	next.Generation = prev.Generation + 1
+	next.LoadedAt = now
+	next.Roots, next.RootCerts = buildPool(prev.rootBundle, rr)
+	next.ClientCAs, next.ClientCACerts = buildPool(prev.clientCABundle, rc)
+	r.cur.Store(&next)
+	r.retiredRoots, r.retiredClientCAs = rr, rc
+	r.scheduleOverlapExpiry()
+	r.stats.recordSuccess(&next)
+
+	ev := Event{Time: now, Trigger: TriggerOverlap, Result: ResultSuccess, Generation: next.Generation}
+	ev.Added, ev.Removed = diffSnapshots(prev, &next)
+	r.emit(ev)
+}
+
 func (r *Reloader) emit(ev Event) {
 	for _, fn := range r.opts.onReload {
 		fn(ev)
@@ -247,11 +280,7 @@ func (r *Reloader) build(m *Material) (*Snapshot, map[[32]byte]retiredCert, map[
 	digest := materialDigest(m)
 
 	if prev != nil && prev.digest == digest {
-		// Same material; the pools change only if an overlap window ended.
-		rr, rc := pruneRetired(r.retiredRoots, now), pruneRetired(r.retiredClientCAs, now)
-		if len(rr) == len(r.retiredRoots) && len(rc) == len(r.retiredClientCAs) {
-			return nil, nil, nil, nil
-		}
+		return nil, nil, nil, nil // unchanged; expireOverlap already ran
 	}
 
 	p, err := parseMaterial(m, buildOptions{now: now, minRemaining: r.opts.minRemaining})
