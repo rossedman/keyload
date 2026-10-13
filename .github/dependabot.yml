@@ -22,6 +22,10 @@ updates:
     ignore:
       # Replaced by the local module; bumped by the release process.
       - dependency-name: github.com/rossedman/keyload
+      # grpc 1.80+ needs Go 1.25, above this project's Go 1.24 minimum.
+      # Remove this when go.mod moves to 1.25.
+      - dependency-name: google.golang.org/grpc
+        versions: [">=1.80.0"]
     groups:
       grpccreds-modules:
         patterns: ["*"]

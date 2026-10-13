@@ -74,6 +74,10 @@ func watchFiles(ctx context.Context, paths []string, debounce, poll time.Duratio
 		pollFiles(ctx, poll, changed)
 		return
 	}
+	// The files may have changed between the Reloader's first load and the
+	// watches being added; that change produced no event. Check once now.
+	// Reloading unchanged files is a no-op.
+	changed()
 
 	events := make(chan struct{}, 1)
 	go func() {
