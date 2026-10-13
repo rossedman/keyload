@@ -1,0 +1,63 @@
+# A service that gets its certificate from cert-manager and reloads it with
+# keyload. cert-manager renews the Certificate into the Secret, the kubelet
+# swaps the mounted files (the ..data symlink), and keyload picks up the new
+# files within moments. No restarts, no reloader sidecar.
+#
+# In the app:
+#
+#   r, err := keyload.New(keyload.Files{
+#       Cert: "/tls/tls.crt", Key: "/tls/tls.key",
+#       Roots: "/tls/ca.crt", ClientCAs: "/tls/ca.crt",
+#   }, keyload.MinRemaining(time.Hour), keyload.OverlapWindow(24*time.Hour))
+#
+# Mount the whole Secret as a directory. A subPath mount never sees updates.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: api
+spec:
+  secretName: api-tls
+  duration: 24h
+  renewBefore: 8h
+  dnsNames:
+    - api.default.svc
+    - api.default.svc.cluster.local
+  usages:
+    - server auth
+    - client auth
+  privateKey:
+    algorithm: ECDSA
+    rotationPolicy: Always
+  issuerRef:
+    kind: ClusterIssuer
+    name: internal-ca
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: api }
+  template:
+    metadata:
+      labels: { app: api }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/example/api:1.0.0 # your app, using keyload
+          ports:
+            - { name: https, containerPort: 8443 }
+            - { name: metrics, containerPort: 9090 }
+          volumeMounts:
+            - name: tls
+              mountPath: /tls
+              readOnly: true
+      volumes:
+        - name: tls
+          secret:
+            secretName: api-tls

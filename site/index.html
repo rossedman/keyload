@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>keyload — TLS certificate reloading for Go</title>
+<meta name="description" content="Go library for reloading TLS certificates and CA bundles at runtime, without restarting the server or client.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='11' cy='16' r='8' fill='none' stroke='%230f766e' stroke-width='4'/><path d='M18 16h11M25 16v5M29 16v4' stroke='%230f766e' stroke-width='4' stroke-linecap='round'/></svg>">
+<style>
+:root {
+  --bg: #f6f8f7;
+  --bg-alt: #ecf1ef;
+  --surface: #ffffff;
+  --text: #15201d;
+  --muted: #55645f;
+  --border: #d8e2de;
+  --accent: #0f766e;
+  --accent-soft: #d7efe9;
+  --amber: #b7791f;
+  --amber-soft: #fbefd9;
+  --ok: #2f7d4f;
+  --ok-soft: #e0f1e6;
+  --bad: #b3261e;
+  --bad-soft: #f9e0de;
+  --code-bg: #15201d;
+  --code-text: #e7efec;
+  --code-muted: #8fa39c;
+  --code-str: #f2c14e;
+  --code-kw: #6fd3c1;
+  --radius: 10px;
+  --mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1513;
+    --bg-alt: #141d1a;
+    --surface: #18231f;
+    --text: #e4ece9;
+    --muted: #93a6a0;
+    --border: #2a3934;
+    --accent: #5fd0bd;
+    --accent-soft: #173832;
+    --amber: #f2c14e;
+    --amber-soft: #3a2f17;
+    --ok: #7fcf9b;
+    --ok-soft: #1c2f23;
+    --bad: #f28b82;
+    --bad-soft: #3a1d1b;
+    --code-bg: #0a0f0e;
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.6 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); }
+code, pre { font-family: var(--mono); font-size: 0.9em; }
+:not(pre) > code {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.05em 0.35em;
+}
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+
+/* Nav */
+nav {
+  position: sticky; top: 0; z-index: 10;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+nav .wrap { display: flex; align-items: center; gap: 20px; height: 56px; }
+.logo { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--text); text-decoration: none; font-size: 1.05rem; }
+.logo svg { width: 22px; height: 22px; }
+nav .links { margin-left: auto; display: flex; gap: 18px; font-size: 0.92rem; white-space: nowrap; }
+nav .links a { color: var(--muted); text-decoration: none; }
+nav .links a:hover { color: var(--text); }
+@media (max-width: 720px) { nav .links .opt { display: none; } }
+@media (max-width: 460px) { nav .links .opt2 { display: none; } }
+
+/* Hero */
+.hero { padding: 72px 0 56px; }
+.hero h1 { font-size: clamp(2rem, 5vw, 3.1rem); line-height: 1.12; margin: 0 0 16px; letter-spacing: -0.02em; }
+.hero h1 em { font-style: normal; color: var(--accent); }
+.hero p.lede { font-size: 1.15rem; color: var(--muted); max-width: 660px; margin: 0 0 28px; }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.btn {
+  display: inline-block; padding: 10px 18px; border-radius: 8px;
+  font-weight: 600; text-decoration: none; font-size: 0.95rem;
+  border: 1px solid var(--border); color: var(--text); background: var(--surface);
+}
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+@media (prefers-color-scheme: dark) { .btn.primary { color: #0e1513; } }
+.install {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--mono); font-size: 0.9rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 9px 12px; max-width: 100%;
+}
+.install span { overflow-x: auto; white-space: nowrap; min-width: 0; }
+.install button { flex: none; }
+
+/* Sections */
+section { padding: 56px 0; border-top: 1px solid var(--border); }
+section.alt { background: var(--bg-alt); }
+h2 { font-size: 1.7rem; margin: 0 0 8px; letter-spacing: -0.01em; }
+h3 { font-size: 1.1rem; margin: 0 0 6px; }
+.sub { color: var(--muted); margin: 0 0 28px; max-width: 700px; }
+
+.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px;
+}
+.card p { margin: 0; color: var(--muted); font-size: 0.95rem; }
+.card .icon { font-size: 1.3rem; margin-bottom: 8px; display: block; }
+a.card { text-decoration: none; color: var(--text); display: block; }
+a.card:hover { border-color: var(--accent); }
+.card .path { font-family: var(--mono); font-size: 0.8rem; color: var(--accent); margin-bottom: 6px; }
+
+/* Code */
+pre {
+  background: var(--code-bg); color: var(--code-text);
+  border-radius: var(--radius); padding: 16px 18px; margin: 0;
+  overflow-x: auto; line-height: 1.55;
+}
+pre .c { color: var(--code-muted); }
+pre .s { color: var(--code-str); }
+pre .k { color: var(--code-kw); }
+.codeblock { position: relative; }
+.copy {
+  font: 600 0.75rem var(--sans); cursor: pointer;
+  background: var(--surface); color: var(--muted);
+  border: 1px solid var(--border); border-radius: 6px; padding: 4px 9px;
+}
+.codeblock .copy { position: absolute; top: 10px; right: 10px; background: #263631; color: #e4ece9; border-color: #34463f; }
+
+.two { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+@media (max-width: 820px) { .two { grid-template-columns: minmax(0, 1fr); } }
+.step { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); margin-bottom: 8px; }
+
+/* Tables */
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 0.93rem; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+th { background: var(--bg-alt); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+td code { white-space: nowrap; }
+
+/* Tabs */
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.tab {
+  cursor: pointer; font: 600 0.9rem var(--sans);
+  padding: 7px 14px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+}
+.tab[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.panel p { color: var(--muted); margin: 0 0 12px; }
+
+/* Pipeline */
+.pipeline { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; counter-reset: s; }
+.pipeline li {
+  counter-increment: s; position: relative; padding: 12px 16px 12px 52px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.pipeline li::before {
+  content: counter(s); position: absolute; left: 14px; top: 12px;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 0.85rem;
+  display: grid; place-items: center;
+}
+.pipeline li p { margin: 0; color: var(--muted); font-size: 0.93rem; }
+
+.note {
+  border-left: 3px solid var(--amber); background: var(--amber-soft);
+  padding: 10px 14px; border-radius: 0 8px 8px 0; margin-top: 20px; font-size: 0.93rem;
+}
+
+/* Simulator */
+.sim { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+@media (max-width: 820px) { .sim { grid-template-columns: minmax(0, 1fr); } }
+.sim .card h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 10px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.actions button {
+  cursor: pointer; font: 600 0.85rem var(--sans); text-align: left;
+  padding: 8px 12px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text);
+}
+.actions button:hover { border-color: var(--accent); }
+.actions button.bad { border-style: dashed; }
+.opts { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; font-size: 0.9rem; color: var(--muted); }
+.opts label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.clock { font-family: var(--mono); font-size: 0.85rem; color: var(--muted); margin-top: 12px; }
+dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; font-size: 0.92rem; }
+dl.kv dt { color: var(--muted); }
+dl.kv dd { margin: 0; font-family: var(--mono); font-size: 0.85rem; overflow-wrap: anywhere; }
+.pill { display: inline-block; font: 600 0.72rem var(--sans); padding: 1px 7px; border-radius: 999px; margin-left: 6px; vertical-align: 1px; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.pill.warn { background: var(--amber-soft); color: var(--amber); }
+.serving { border-color: var(--accent); }
+.gen { font-size: 2rem; font-weight: 700; color: var(--accent); line-height: 1; }
+.log { list-style: none; margin: 0; padding: 0; font: 0.82rem/1.5 var(--mono); max-height: 260px; overflow-y: auto; }
+.log li { padding: 6px 0; border-bottom: 1px solid var(--border); }
+.log li:last-child { border-bottom: 0; }
+.log .t { color: var(--muted); }
+.log .ok { color: var(--ok); }
+.log .bad { color: var(--bad); }
+.log .warn { color: var(--amber); }
+.peers { display: grid; gap: 6px; font-size: 0.9rem; }
+.peers div { display: flex; justify-content: space-between; gap: 10px; }
+.sim pre { font-size: 0.8rem; }
+
+footer { padding: 40px 0 56px; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.9rem; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="logo" href="#">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="11" cy="16" r="7" fill="none" stroke="currentColor" stroke-width="3.5" style="color:var(--accent)"/><path d="M18 16h11M25 16v5M29 16v4" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" style="color:var(--accent)"/></svg>
+      keyload
+    </a>
+    <div class="links">
+      <a class="opt2" href="#quickstart">Quick start</a>
+      <a class="opt" href="#reload">How it works</a>
+      <a href="#simulator">Simulator</a>
+      <a class="opt" href="#examples">Examples</a>
+      <a href="https://pkg.go.dev/github.com/rossedman/keyload">API docs</a>
+      <a href="https://github.com/rossedman/keyload">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <h1>Rotate certificates <em>without restarting</em>.</h1>
+    <p class="lede">keyload is a Go library that reloads TLS certificates, keys and CA bundles while your servers and clients keep running. When cert-manager renews a certificate, the next handshake uses it. When a bad file shows up, the last good one keeps serving.</p>
+    <div class="cta">
+      <a class="btn primary" href="#quickstart">Get started</a>
+      <a class="btn" href="#simulator">Try the simulator</a>
+      <div class="install"><span id="install-cmd">go get github.com/rossedman/keyload</span><button class="copy" data-copy="#install-cmd">Copy</button></div>
+    </div>
+  </div>
+</header>
+
+<section class="alt">
+  <div class="wrap grid">
+    <div class="card"><span class="icon">🔁</span><h3>Both directions</h3><p>Reloads the certificate you present <em>and</em> the CAs you trust, on servers and clients. That's the part crypto/tls has no hook for.</p></div>
+    <div class="card"><span class="icon">🛡️</span><h3>Never applies bad files</h3><p>Expired certificates, mismatched keys and half-written files are rejected. The last good certificate keeps serving and you get an event and a metric.</p></div>
+    <div class="card"><span class="icon">☸️</span><h3>Kubernetes-ready</h3><p>Watches Secret volumes correctly, including the <code>..data</code> symlink swap. CA rotations get an overlap window so peers keep working.</p></div>
+    <div class="card"><span class="icon">📦</span><h3>Standard library only</h3><p>crypto/tls still does the verification. No dependencies; gRPC support is a separate module.</p></div>
+  </div>
+</section>
+
+<section id="quickstart">
+  <div class="wrap">
+    <h2>Quick start</h2>
+    <p class="sub">Point keyload at your files and hand its configs to your server and client. That's the whole setup.</p>
+    <div class="two">
+      <div>
+        <div class="step">1 · Load the files</div>
+        <div class="codeblock"><button class="copy">Copy</button><pre>r, err := keyload.<span class="k">New</span>(keyload.Files{
+    Cert:      <span class="s">"/tls/tls.crt"</span>,
+    Key:       <span class="s">"/tls/tls.key"</span>,
+    Roots:     <span class="s">"/tls/ca.crt"</span>, <span class="c">// to verify servers</span>
+    ClientCAs: <span class="s">"/tls/ca.crt"</span>, <span class="c">// to verify clients</span>
+})
+<span class="k">if</span> err != <span class="k">nil</span> {
+    log.Fatal(err) <span class="c">// the first load must be valid</span>
+}
+<span class="k">defer</span> r.Close()</pre></div>
+      </div>
+      <div>
+        <div class="step">2 · Use it</div>
+        <div class="codeblock"><button class="copy">Copy</button><pre><span class="c">// Server: certificate and client CAs follow reloads.</span>
+srv := &amp;http.Server{TLSConfig: r.<span class="k">ServerConfig</span>(&amp;tls.Config{
+    ClientAuth: tls.RequireAndVerifyClientCert,
+})}
+
+<span class="c">// Client: each connection uses the current files.</span>
+tr := &amp;http.Transport{}
+<span class="k">if</span> err := r.<span class="k">ConfigureTransport</span>(tr, <span class="k">nil</span>); err != <span class="k">nil</span> {
+    log.Fatal(err)
+}</pre></div>
+      </div>
+    </div>
+    <p class="note">Mount a Kubernetes Secret as a whole directory. A <code>subPath</code> mount never sees updates, from keyload or anything else.</p>
+  </div>
+</section>
+
+<section id="reload" class="alt">
+  <div class="wrap">
+    <h2>How a reload works</h2>
+    <p class="sub">Everything lives in one immutable snapshot. Handshakes read it without locks; a reload builds a new one off to the side and swaps it in only if it passes every check.</p>
+    <div class="two">
+      <ol class="pipeline">
+        <li><strong>Something changes</strong><p>A file in a watched directory, <code>SIGHUP</code> with <code>OnSignal</code>, a timer with <code>PollEvery</code>, or a call to <code>r.Reload(ctx)</code>.</p></li>
+        <li><strong>Read every file</strong><p>If a read fails or the files look half-written, wait briefly and retry, up to 3 times.</p></li>
+        <li><strong>Validate</strong><p>Every check in the table must pass. Unchanged files are a no-op.</p></li>
+        <li><strong>Swap</strong><p>The new snapshot goes live atomically with the next generation number. On failure, the old one stays and you get an event.</p></li>
+      </ol>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Check</th><th>Error</th></tr></thead>
+          <tbody>
+            <tr><td>Key matches the certificate</td><td><code>ErrKeyMismatch</code></td></tr>
+            <tr><td>Chain inside its validity window</td><td><code>ErrExpired</code><br><code>ErrNotYetValid</code></td></tr>
+            <tr><td>At least <code>MinRemaining(d)</code> left</td><td><code>ErrExpiresTooSoon</code></td></tr>
+            <tr><td>Chains to the new roots (<code>RequireChain()</code>)</td><td><code>ErrChainVerification</code></td></tr>
+            <tr><td>CA bundles aren't empty</td><td><code>ErrEmptyBundle</code></td></tr>
+            <tr><td>No truncated PEM</td><td><code>ErrTruncatedPEM</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h3 style="margin-top:40px">Use it with</h3>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-panel="m-server">Servers</button>
+      <button class="tab" role="tab" aria-selected="false" data-panel="m-client">HTTP clients</button>
+      <button class="tab" role="tab" aria-selected="false" data-panel="m-grpc">gRPC</button>
+      <button class="tab" role="tab" aria-selected="false" data-panel="m-config">Config mode</button>
+    </div>
+    <div class="panel" id="m-server">
+      <p>Works with any crypto/tls server. Each handshake gets a config built from the current snapshot, cached per reload, so it adds about 2.5&nbsp;ns and no allocations. Session resumption keeps working across reloads. For HTTP/2, set <code>NextProtos</code> here.</p>
+      <div class="codeblock"><button class="copy">Copy</button><pre>srv := &amp;http.Server{TLSConfig: r.<span class="k">ServerConfig</span>(&amp;tls.Config{
+    ClientAuth: tls.RequireAndVerifyClientCert,
+    NextProtos: []<span class="k">string</span>{<span class="s">"h2"</span>, <span class="s">"http/1.1"</span>},
+})}
+srv.ListenAndServeTLS(<span class="s">""</span>, <span class="s">""</span>)</pre></div>
+    </div>
+    <div class="panel" id="m-client" hidden>
+      <p>Every new connection gets a fresh config with the current roots and client certificate, and crypto/tls verifies the server. If the transport uses an HTTPS proxy, <code>ConfigureTransport</code> returns <code>ErrProxyConfigured</code>, because <code>http.Transport</code> skips the custom dialer for proxied requests. Use Config mode there.</p>
+      <div class="codeblock"><button class="copy">Copy</button><pre>tr := &amp;http.Transport{ForceAttemptHTTP2: <span class="k">true</span>}
+<span class="k">if</span> err := r.<span class="k">ConfigureTransport</span>(tr, <span class="k">nil</span>); err != <span class="k">nil</span> {
+    log.Fatal(err)
+}
+client := &amp;http.Client{Transport: tr}
+
+<span class="c">// Or for raw dials:</span>
+dial := r.<span class="k">DialTLSContext</span>(&amp;tls.Config{ServerName: <span class="s">"db.internal"</span>})</pre></div>
+    </div>
+    <div class="panel" id="m-grpc" hidden>
+      <p>Transport credentials for grpc-go, in a separate module so the core stays dependency-free. New connections pick up reloads; existing ones keep the certificates they started with.</p>
+      <div class="codeblock"><button class="copy">Copy</button><pre><span class="k">import</span> <span class="s">"github.com/rossedman/keyload/grpccreds"</span>
+
+srv := grpc.NewServer(grpc.Creds(grpccreds.<span class="k">New</span>(r, grpccreds.WithTLSConfig(&amp;tls.Config{
+    ClientAuth: tls.RequireAndVerifyClientCert,
+}))))
+
+conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(grpccreds.<span class="k">New</span>(r)))</pre></div>
+    </div>
+    <div class="panel" id="m-config" hidden>
+      <p>For libraries that take a <code>*tls.Config</code> and nothing else. keyload sets <code>InsecureSkipVerify</code> and verifies the server in <code>VerifyConnection</code> with exactly the options crypto/tls uses, on every handshake. <code>ServerName</code> is required. CI checks it against crypto/tls on 2,000 generated chains.</p>
+      <div class="codeblock"><button class="copy">Copy</button><pre>cfg, err := r.<span class="k">ClientConfig</span>(&amp;tls.Config{ServerName: <span class="s">"api.internal"</span>})
+<span class="k">if</span> err != <span class="k">nil</span> {
+    log.Fatal(err)
+}
+tr := &amp;http.Transport{Proxy: http.ProxyFromEnvironment, TLSClientConfig: cfg}</pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="simulator">
+  <div class="wrap">
+    <h2>Simulator</h2>
+    <p class="sub">Push files at a reloader and see what it serves. This runs keyload's reload rules in your browser: the same checks, retries, keep-last-good and CA overlap.</p>
+    <div class="sim">
+      <div class="card">
+        <h3>What lands on disk</h3>
+        <div class="actions" id="sim-actions">
+          <button data-act="renew">✅ cert-manager renews the certificate</button>
+          <button data-act="halfwritten">✍️ Certificate written, key a moment later</button>
+          <button class="bad" data-act="badkey">🔑 Key that doesn't match</button>
+          <button class="bad" data-act="truncated">✂️ Truncated certificate</button>
+          <button class="bad" data-act="expired">⌛ Already-expired certificate</button>
+          <button class="bad" data-act="short">⏳ Certificate valid for 30 minutes</button>
+          <button class="bad" data-act="emptyca">🫙 Empty CA bundle</button>
+          <button data-act="addca">➕ Add CA 2 to the bundle</button>
+          <button data-act="moveleaf">🔀 Issue the certificate from CA 2</button>
+          <button data-act="dropca">➖ Remove CA 1 from the bundle</button>
+          <button data-act="time">🕐 12 hours pass</button>
+          <button data-act="reset">↺ Reset</button>
+        </div>
+        <div class="opts">
+          <label><input type="checkbox" id="opt-min" checked> <code>MinRemaining(time.Hour)</code></label>
+          <label><input type="checkbox" id="opt-overlap" checked> <code>OverlapWindow(24*time.Hour)</code></label>
+        </div>
+        <h3 style="margin-top:18px">On disk</h3>
+        <dl class="kv" id="sim-disk"></dl>
+        <div class="clock" id="sim-clock"></div>
+      </div>
+
+      <div class="card serving">
+        <h3>In service</h3>
+        <div style="display:flex; gap:18px; align-items:center; margin-bottom:12px">
+          <div><div class="gen" id="sim-gen">1</div><small style="color:var(--muted)">generation</small></div>
+          <dl class="kv" id="sim-snap"></dl>
+        </div>
+        <h3 style="margin-top:16px">Can these peers connect?</h3>
+        <div class="peers" id="sim-peers"></div>
+      </div>
+
+      <div class="card">
+        <h3>OnReload events</h3>
+        <ul class="log" id="sim-log"></ul>
+      </div>
+
+      <div class="card">
+        <h3>/metrics</h3>
+        <pre id="sim-metrics"></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <h2>Know before it breaks</h2>
+    <p class="sub">Every reload that changes something or fails produces an event naming the file, the reason, and the certificates that changed (never key material). <code>MetricsHandler</code> serves Prometheus metrics with no client library.</p>
+    <div class="two">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Metric</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>keyload_generation</code></td><td>Current snapshot generation</td></tr>
+            <tr><td><code>keyload_reload_total{result}</code></td><td><code>success</code>, <code>invalid</code>, <code>read_error</code></td></tr>
+            <tr><td><code>keyload_cert_not_after_seconds{role}</code></td><td>Expiry of your certificate and the earliest CA in each bundle</td></tr>
+            <tr><td><code>keyload_last_success_timestamp_seconds</code></td><td>Catches a watcher that silently stopped</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="codeblock"><button class="copy">Copy</button><pre><span class="c"># Prometheus alerting rules</span>
+- alert: <span class="s">CertificateExpiresSoon</span>
+  expr: keyload_cert_not_after_seconds - time() &lt; 7 * 86400
+- alert: <span class="s">CertificateReloadFailing</span>
+  expr: increase(keyload_reload_total{result!="success"}[15m]) &gt; 0</pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="examples">
+  <div class="wrap">
+    <h2>Examples</h2>
+    <p class="sub">Small runnable programs. The commands to try each one are at the top of its file, and <code>gencerts</code> makes throwaway certificates to try them with.</p>
+    <div class="grid">
+      <a class="card" href="https://github.com/rossedman/keyload/blob/main/examples/server/main.go"><div class="path">examples/server</div><h3>mTLS server</h3><p>An HTTPS server whose certificate and client CAs reload, with <code>SIGHUP</code> for on-demand reloads.</p></a>
+      <a class="card" href="https://github.com/rossedman/keyload/blob/main/examples/client/main.go"><div class="path">examples/client</div><h3>mTLS client</h3><p>An HTTP client whose certificate and trusted CAs reload between requests.</p></a>
+      <a class="card" href="https://github.com/rossedman/keyload/blob/main/grpccreds/example_test.go"><div class="path">grpccreds</div><h3>gRPC</h3><p>A gRPC server and client with mutual TLS from the same files.</p></a>
+      <a class="card" href="https://github.com/rossedman/keyload/blob/main/examples/proxy/main.go"><div class="path">examples/proxy</div><h3>Behind a proxy</h3><p>An HTTPS client going through an HTTP proxy, which needs Config mode.</p></a>
+      <a class="card" href="https://github.com/rossedman/keyload/blob/main/examples/metrics/main.go"><div class="path">examples/metrics</div><h3>Metrics and logs</h3><p>Prometheus metrics, structured reload logs and alerting rules.</p></a>
+      <a class="card" href="https://github.com/rossedman/keyload/blob/main/examples/kubernetes/app.yaml"><div class="path">examples/kubernetes</div><h3>cert-manager</h3><p>A <code>Certificate</code> renewed into a Secret and mounted into a Deployment.</p></a>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <h2>Good to know</h2>
+    <p class="sub">The details that usually bite.</p>
+    <div class="grid">
+      <div class="card"><h3>Existing connections</h3><p>Keep the certificates they started with. Only new handshakes use reloaded files, so long-lived connections rotate when they reconnect.</p></div>
+      <div class="card"><h3>Rotating a CA</h3><p>Add the new CA, move certificates over, then remove the old one. With <code>OverlapWindow</code>, peers that haven't rotated yet keep working until the window ends.</p></div>
+      <div class="card"><h3>Network filesystems</h3><p>inotify misses changes on NFS and FUSE, so keyload checks every 30 seconds there, and on macOS and Windows. Add <code>OnSignal</code> or <code>PollEvery</code> if you need faster.</p></div>
+      <div class="card"><h3>Other sources</h3><p>Anything that can return PEM works: implement <code>Source</code>, or wrap a function with <code>SourceFunc</code>, for Vault or a secrets API.</p></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>keyload · MIT licensed</span>
+    <span><a href="https://pkg.go.dev/github.com/rossedman/keyload">API reference</a> · <a href="https://github.com/rossedman/keyload/blob/main/CHANGELOG.md">Changelog</a> · <a href="https://github.com/rossedman/keyload/blob/main/SECURITY.md">Security</a> · <a href="https://github.com/rossedman/keyload">GitHub</a></span>
+  </div>
+</footer>
+
+<script>
+// ---- Copy buttons ----
+document.querySelectorAll(".copy").forEach(btn => {
+  btn.addEventListener("click", async () => {
+    const target = btn.dataset.copy
+      ? document.querySelector(btn.dataset.copy)
+      : btn.parentElement.querySelector("pre");
+    try {
+      await navigator.clipboard.writeText(target.innerText);
+      const prev = btn.textContent;
+      btn.textContent = "Copied";
+      setTimeout(() => (btn.textContent = prev), 1200);
+    } catch (_) { /* clipboard unavailable */ }
+  });
+});
+
+// ---- Tabs ----
+document.querySelectorAll(".tabs").forEach(group => {
+  const tabs = [...group.querySelectorAll(".tab")];
+  tabs.forEach(tab => tab.addEventListener("click", () => {
+    tabs.forEach(t => {
+      const on = t === tab;
+      t.setAttribute("aria-selected", on);
+      document.getElementById(t.dataset.panel).hidden = !on;
+    });
+  }));
+});
+
+// ---- Simulator: mirrors Reloader.reload, parseMaterial and overlap ----
+// Times are in hours since the simulation started.
+const H = 1;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+let sim;
+
+function reset() {
+  sim = {
+    now: 0, serial: 100, keyId: 1,
+    disk: null, snap: null, retired: {}, // CA name -> until (hours)
+    stats: { success: 0, invalid: 0, read_error: 0, last: 0 },
+    log: [],
+  };
+  const leaf = issue("CA 1", 24 * H);
+  sim.disk = { cert: leaf, key: leaf.key, bundle: ["CA 1"], truncated: false };
+  reload("initial");
+}
+
+function issue(ca, ttl, notBefore = sim.now - 0.5) {
+  return { serial: sim.serial++, issuer: ca, notBefore, notAfter: sim.now + ttl, key: sim.keyId++ };
+}
+
+function digest(d) {
+  return JSON.stringify([d.cert, d.key, d.bundle, d.truncated]);
+}
+
+// validate returns null or {role, err} like parseMaterial.
+function validate(d) {
+  if (d.truncated) return { role: "leaf", file: "tls.crt", err: "truncated or malformed PEM block (ErrTruncatedPEM)" };
+  if (d.bundle.length === 0) return { role: "roots", file: "ca.crt", err: "no certificates found (ErrEmptyBundle)" };
+  if (d.key !== d.cert.key) return { role: "key", file: "tls.key", err: "private key does not match the leaf certificate (ErrKeyMismatch)", transient: true };
+  if (sim.now < d.cert.notBefore) return { role: "leaf", file: "tls.crt", err: "certificate is not yet valid (ErrNotYetValid)" };
+  if (sim.now > d.cert.notAfter) return { role: "leaf", file: "tls.crt", err: "certificate has expired (ErrExpired)" };
+  const min = document.getElementById("opt-min").checked ? 1 : 0;
+  if (d.cert.notAfter - sim.now < min) return { role: "leaf", file: "tls.crt", err: `certificate expires sooner than the minimum remaining lifetime: ${fmtDur(d.cert.notAfter - sim.now)} left, want at least 1h0m0s (ErrExpiresTooSoon)` };
+  return null;
+}
+
+function pruneRetired() {
+  const out = {};
+  for (const [ca, until] of Object.entries(sim.retired)) if (sim.now < until) out[ca] = until;
+  return out;
+}
+
+// expireOverlap follows Reloader.expireOverlap: outgoing CAs leave the pool
+// when their window ends, whatever is on disk.
+function expireOverlap() {
+  const pruned = pruneRetired();
+  const removed = Object.keys(sim.retired).filter(ca => !(ca in pruned));
+  if (!sim.snap || !removed.length) return;
+  sim.retired = pruned;
+  sim.snap = { ...sim.snap, gen: sim.snap.gen + 1, roots: [...sim.snap.bundle, ...Object.keys(pruned).sort()] };
+  sim.stats.success++;
+  sim.stats.last = sim.now;
+  push("ok", `overlap reload: generation ${sim.snap.gen} · removed root ${removed.join(", ")}`);
+}
+
+// reload follows Reloader.reload: retry transient failures, skip unchanged
+// material, keep the last good snapshot on failure.
+function reload(trigger, onRetry) {
+  expireOverlap();
+  const prev = sim.snap;
+  if (prev && prev.digest === digest(sim.disk)) {
+    if (trigger !== "overlap") push("t", `${trigger}: files unchanged, so no reload and no event`);
+    return render();
+  }
+  let attempt = 0, bad;
+  for (;;) {
+    bad = validate(sim.disk);
+    if (!bad || !bad.transient || attempt >= 3) break;
+    attempt++;
+    if (onRetry) onRetry(attempt); // e.g. the writer finishes
+  }
+  if (bad) {
+    sim.stats.invalid++;
+    if (prev) push("bad", `${trigger} reload rejected (invalid, ${bad.role} ${bad.file}): ${bad.err}; still serving generation ${prev.gen}`);
+    return render();
+  }
+  const d = digest(sim.disk);
+  const retired = { ...sim.retired };
+  const overlap = document.getElementById("opt-overlap").checked ? 24 : 0;
+  for (const ca of sim.disk.bundle) delete retired[ca];
+  if (prev && overlap) for (const ca of prev.bundle) if (!sim.disk.bundle.includes(ca) && !(ca in retired)) retired[ca] = sim.now + overlap;
+  const roots = [...sim.disk.bundle, ...Object.keys(retired).sort()];
+  const added = [], removed = [];
+  if (!prev || prev.cert.serial !== sim.disk.cert.serial) added.push(`leaf serial ${sim.disk.cert.serial}`);
+  if (prev && prev.cert.serial !== sim.disk.cert.serial) removed.push(`leaf serial ${prev.cert.serial}`);
+  for (const ca of roots) if (!prev || !prev.roots.includes(ca)) added.push(`root ${ca}`);
+  if (prev) for (const ca of prev.roots) if (!roots.includes(ca)) removed.push(`root ${ca}`);
+
+  sim.retired = retired;
+  sim.snap = { gen: prev ? prev.gen + 1 : 1, cert: { ...sim.disk.cert }, bundle: [...sim.disk.bundle], roots, digest: d, loadedAt: sim.now };
+  sim.stats.success++;
+  sim.stats.last = sim.now;
+  const retry = attempt ? ` after ${attempt} ${attempt === 1 ? "retry" : "retries"}` : "";
+  push("ok", `${trigger} reload: generation ${sim.snap.gen}${retry}` +
+    (added.length ? ` · added ${added.join(", ")}` : "") + (removed.length ? ` · removed ${removed.join(", ")}` : ""));
+  render();
+}
+
+function push(cls, text) {
+  sim.log.unshift({ cls, text, at: sim.now });
+  sim.log = sim.log.slice(0, 40);
+}
+
+function fmtDur(h) {
+  const m = Math.round(h * 60);
+  return `${Math.floor(m / 60)}h${String(m % 60)}m0s`;
+}
+function fmtTime(h) {
+  const d = Math.floor(h / 24), r = h - d * 24;
+  return `day ${d + 1}, ${String(Math.floor(r)).padStart(2, "0")}:${String(Math.round((r % 1) * 60)).padStart(2, "0")}`;
+}
+
+function render() {
+  const s = sim.snap;
+  document.getElementById("sim-gen").textContent = s.gen;
+  const left = s.cert.notAfter - sim.now;
+  const expPill = left <= 0 ? `<span class="pill bad">expired</span>` : left < 6 ? `<span class="pill warn">${fmtDur(left)} left</span>` : `<span class="pill ok">${Math.round(left)}h left</span>`;
+  const rootsHtml = s.roots.map(ca => ca in sim.retired
+    ? `${esc(ca)}<span class="pill warn">overlap, ${Math.round(sim.retired[ca] - sim.now)}h left</span>`
+    : esc(ca)).join("<br>");
+  document.getElementById("sim-snap").innerHTML =
+    `<dt>Certificate</dt><dd>serial ${s.cert.serial}, from ${esc(s.cert.issuer)}${expPill}</dd>` +
+    `<dt>Roots</dt><dd>${rootsHtml}</dd>`;
+
+  // A peer can connect if its certificate's CA is in the pool, and our
+  // certificate's CA is one the peer trusts.
+  const peerRow = (label, ca) => {
+    const ok = s.roots.includes(ca);
+    return `<div><span>${esc(label)}</span><span class="pill ${ok ? "ok" : "bad"}">${ok ? "trusted" : "refused"}</span></div>`;
+  };
+  document.getElementById("sim-peers").innerHTML =
+    peerRow("Client with a certificate from CA 1", "CA 1") +
+    peerRow("Client with a certificate from CA 2", "CA 2") +
+    (left <= 0 ? `<div><span>Anyone, right now</span><span class="pill bad">our certificate expired</span></div>` : "");
+
+  const dc = sim.disk.cert, bad = validate(sim.disk);
+  document.getElementById("sim-disk").innerHTML =
+    `<dt>tls.crt</dt><dd>${sim.disk.truncated ? "truncated" : `serial ${dc.serial}, from ${esc(dc.issuer)}, ${dc.notAfter - sim.now > 0 ? fmtDur(dc.notAfter - sim.now) + " left" : "expired"}`}</dd>` +
+    `<dt>tls.key</dt><dd>${sim.disk.key === dc.key ? "matches tls.crt" : "does not match tls.crt"}</dd>` +
+    `<dt>ca.crt</dt><dd>${sim.disk.bundle.length ? esc(sim.disk.bundle.join(", ")) : "empty"}</dd>` +
+    `<dt>Status</dt><dd>${bad ? `<span class="pill bad">would be rejected</span>` : `<span class="pill ok">valid</span>`}</dd>`;
+  document.getElementById("sim-log").innerHTML = sim.log.map(l =>
+    `<li><span class="t">${fmtTime(l.at)}</span> <span class="${l.cls}">${esc(l.text)}</span></li>`).join("");
+  document.getElementById("sim-clock").textContent = `Simulated time: ${fmtTime(sim.now)}`;
+
+  const earliestRoot = 24 * 365;
+  document.getElementById("sim-metrics").textContent = [
+    `keyload_generation ${s.gen}`,
+    `keyload_reload_total{result="success"} ${sim.stats.success}`,
+    `keyload_reload_total{result="invalid"} ${sim.stats.invalid}`,
+    `keyload_reload_total{result="read_error"} ${sim.stats.read_error}`,
+    `keyload_cert_not_after_seconds{role="leaf"} <now + ${fmtDur(Math.max(left, 0))}>`,
+    `keyload_cert_not_after_seconds{role="roots"} <now + ${earliestRoot}h>`,
+    `keyload_last_success_timestamp_seconds <${fmtTime(sim.stats.last)}>`,
+  ].join("\n");
+}
+
+const actions = {
+  renew() {
+    const leaf = issue(sim.disk.cert.issuer, 24 * H);
+    Object.assign(sim.disk, { cert: leaf, key: leaf.key, truncated: false });
+    reload("watch");
+  },
+  halfwritten() {
+    const leaf = issue(sim.disk.cert.issuer, 24 * H);
+    sim.disk.cert = leaf; // the key is still the old one for a moment
+    sim.disk.truncated = false;
+    push("warn", "tls.crt written; tls.key not yet");
+    reload("watch", () => { sim.disk.key = leaf.key; });
+  },
+  badkey() { sim.disk.key = sim.keyId++; reload("watch"); },
+  truncated() { sim.disk.truncated = true; reload("watch"); },
+  expired() {
+    const leaf = issue(sim.disk.cert.issuer, -1, sim.now - 48);
+    Object.assign(sim.disk, { cert: leaf, key: leaf.key, truncated: false });
+    reload("watch");
+  },
+  short() {
+    const leaf = issue(sim.disk.cert.issuer, 0.5);
+    Object.assign(sim.disk, { cert: leaf, key: leaf.key, truncated: false });
+    reload("watch");
+  },
+  emptyca() { sim.disk.bundle = []; reload("watch"); },
+  addca() {
+    if (!sim.disk.bundle.includes("CA 2")) sim.disk.bundle = [...sim.disk.bundle.filter(Boolean), "CA 2"];
+    reload("watch");
+  },
+  moveleaf() {
+    const leaf = issue("CA 2", 24 * H);
+    Object.assign(sim.disk, { cert: leaf, key: leaf.key, truncated: false });
+    reload("watch");
+  },
+  dropca() {
+    sim.disk.bundle = sim.disk.bundle.filter(ca => ca !== "CA 1");
+    if (!sim.disk.bundle.length) sim.disk.bundle = ["CA 2"];
+    reload("watch");
+  },
+  time() {
+    const target = sim.now + 12;
+    // Overlap windows that end along the way trigger their own reloads.
+    const ends = Object.values(sim.retired).filter(u => u <= target).sort((a, b) => a - b);
+    for (const u of ends) { sim.now = u; reload("overlap"); }
+    sim.now = target;
+    render();
+  },
+  reset,
+};
+
+document.getElementById("sim-actions").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (b) actions[b.dataset.act]();
+});
+reset();
+</script>
+</body>
+</html>

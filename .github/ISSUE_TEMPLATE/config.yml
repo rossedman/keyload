@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://rossedman.github.io/keyload/
+    about: Guides and examples for servers, clients, gRPC and Kubernetes.
+  - name: API reference
+    url: https://pkg.go.dev/github.com/rossedman/keyload
+    about: Package documentation and runnable examples.
+  - name: Report a security vulnerability
+    url: https://github.com/rossedman/keyload/security/advisories/new
+    about: Please report security issues privately.

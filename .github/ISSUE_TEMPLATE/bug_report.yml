@@ -1,0 +1,58 @@
+name: Bug report
+description: Something isn't working as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! For security issues, please use [private vulnerability reporting](https://github.com/rossedman/keyload/security/advisories/new) instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: And what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: Code, or the steps that trigger it. `go run ./examples/gencerts` makes throwaway certificates to reproduce with.
+      render: go
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: keyload version (from go.mod) and `go version`
+      placeholder: keyload v0.1.0, go1.25.1 linux/amd64
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: How do you use it?
+      multiple: true
+      options:
+        - ServerConfig
+        - ConfigureTransport / DialTLSContext
+        - grpccreds
+        - ClientConfig (Config mode)
+        - A custom Source
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where do the files come from?
+      multiple: true
+      options:
+        - Kubernetes Secret volume
+        - Local disk
+        - Network filesystem (NFS, FUSE, ...)
+        - A custom Source
+  - type: textarea
+    id: logs
+    attributes:
+      label: Events and errors
+      description: Output from `OnReload` or the error returned. Remove anything private; keyload itself never logs key material.
+      render: text

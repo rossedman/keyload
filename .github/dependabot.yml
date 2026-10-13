@@ -1,0 +1,38 @@
+version: 2
+updates:
+  # The core module has no dependencies outside the standard library; this
+  # keeps any that are added later up to date.
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: deps
+    groups:
+      go-modules:
+        patterns: ["*"]
+
+  # grpc-go and its dependencies.
+  - package-ecosystem: gomod
+    directory: /grpccreds
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: deps
+    ignore:
+      # Replaced by the local module; bumped by the release process.
+      - dependency-name: github.com/rossedman/keyload
+    groups:
+      grpccreds-modules:
+        patterns: ["*"]
+
+  # Actions used by .github/workflows, grouped into one weekly pull request.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      github-actions:
+        patterns: ["*"]
