@@ -7,6 +7,8 @@ change the API.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-13
+
 The first release: reload TLS certificates, keys and CA bundles while a
 server or client keeps running.
 
@@ -31,4 +33,5 @@ server or client keeps running.
 - Runnable examples, a docs site, benchmarks, differential tests of Config
   mode against crypto/tls, and fuzzing.
 
-[Unreleased]: https://github.com/rossedman/keyload/commits/main
+[Unreleased]: https://github.com/rossedman/keyload/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/rossedman/keyload/releases/tag/v0.1.0
