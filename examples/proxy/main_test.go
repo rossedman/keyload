@@ -29,14 +29,19 @@ func connectProxy(t *testing.T) (*httptest.Server, *atomic.Int32) {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}
-		tunnels.Add(1)
-		w.WriteHeader(http.StatusOK)
-		conn, _, err := w.(http.Hijacker).Hijack()
+		conn, rw, err := w.(http.Hijacker).Hijack()
 		if err != nil {
 			upstream.Close()
 			return
 		}
-		go func() { io.Copy(upstream, conn); upstream.Close() }()
+		tunnels.Add(1)
+		if _, err := conn.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n")); err != nil {
+			conn.Close()
+			upstream.Close()
+			return
+		}
+		// rw.Reader may already hold bytes the client sent after CONNECT.
+		go func() { io.Copy(upstream, rw.Reader); upstream.Close() }()
 		go func() { io.Copy(conn, upstream); conn.Close() }()
 	}))
 	t.Cleanup(srv.Close)
