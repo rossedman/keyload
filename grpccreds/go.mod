@@ -3,7 +3,7 @@ module github.com/rossedman/keyload/grpccreds
 go 1.24.0
 
 require (
-	github.com/rossedman/keyload v0.1.0
+	github.com/rossedman/keyload v0.1.1
 	google.golang.org/grpc v1.79.3
 )
 

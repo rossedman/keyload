@@ -7,9 +7,13 @@ change the API.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-14
+
+Documentation and fixes found by using keyload the way a new user would.
+
 ### Added
 
-- [Getting started](docs/getting-started.md) guide: install, run a server and
+- [Getting started](https://github.com/rossedman/keyload/blob/main/docs/getting-started.md) guide: install, run a server and
   client, rotate and break certificates while they run, and test your code.
 - `examples/quickstart`: the quick start as a program, with tests that show
   how to test code that uses keyload using `crypto/x509` only.
@@ -56,5 +60,6 @@ server or client keeps running.
 - Runnable examples, a docs site, benchmarks, differential tests of Config
   mode against crypto/tls, and fuzzing.
 
-[Unreleased]: https://github.com/rossedman/keyload/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/rossedman/keyload/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/rossedman/keyload/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/rossedman/keyload/releases/tag/v0.1.0
