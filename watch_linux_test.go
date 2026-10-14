@@ -3,15 +3,73 @@
 package keyload
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"sync"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/rossedman/keyload/internal/testpki"
 )
 
+// watchForTest makes the watch tests independent of how many inotify
+// instances the machine has left. CI runners can hit the per-user limit, in
+// which case Files falls back to polling, as documented; the test then polls
+// quickly instead of every 30 seconds. Any other fallback is a watcher bug and
+// fails the test.
+func watchForTest(t *testing.T) {
+	t.Helper()
+	var mu sync.Mutex
+	prevPoll, prevHook := pollFallback, watchFallback
+	pollFallback = 50 * time.Millisecond
+	watchFallback = func(reason string, err error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if reason == "init" && (errors.Is(err, syscall.EMFILE) || errors.Is(err, syscall.ENFILE)) {
+			t.Logf("inotify unavailable (%v); testing the polling fallback instead", err)
+			return
+		}
+		t.Errorf("watcher fell back to polling: %s %v", reason, err)
+	}
+	t.Cleanup(func() { pollFallback, watchFallback = prevPoll, prevHook })
+}
+
+// TestWatchFallsBackWhenInotifyIsExhausted checks that reloads still happen,
+// by polling, when no inotify instance can be created.
+func TestWatchFallsBackWhenInotifyIsExhausted(t *testing.T) {
+	prevInit := inotifyInit
+	inotifyInit = func() (int, error) { return -1, syscall.EMFILE }
+	defer func() { inotifyInit = prevInit }()
+
+	var reasons []string
+	var mu sync.Mutex
+	prevPoll, prevHook := pollFallback, watchFallback
+	pollFallback = 50 * time.Millisecond
+	watchFallback = func(reason string, err error) {
+		mu.Lock()
+		reasons = append(reasons, reason)
+		mu.Unlock()
+	}
+	defer func() { pollFallback, watchFallback = prevPoll, prevHook }()
+
+	ca := testpki.NewCA(t, "ca")
+	d := newPKIDir(t, ca.Issue(t, testpki.LeafOptions{}), ca.PEM(), nil)
+	r := newReloader(t, Files{Cert: d.files.Cert, Key: d.files.Key, Roots: d.files.Roots})
+	d.write(t, ca.Issue(t, testpki.LeafOptions{}), nil, nil)
+	waitGeneration(t, r, 2, 5*time.Second)
+	r.Close()
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(reasons) != 1 || reasons[0] != "init" {
+		t.Errorf("fallback reasons = %v, want [init]", reasons)
+	}
+}
+
 func TestWatchRewrite(t *testing.T) {
+	watchForTest(t)
 	ca := testpki.NewCA(t, "ca")
 	d := newPKIDir(t, ca.Issue(t, testpki.LeafOptions{}), ca.PEM(), nil)
 	r := newReloader(t, Files{Cert: d.files.Cert, Key: d.files.Key, Roots: d.files.Roots})
@@ -67,6 +125,7 @@ func (k *kubeSecretVolume) update(t *testing.T, files map[string][]byte) {
 }
 
 func TestWatchKubernetesSecretVolume(t *testing.T) {
+	watchForTest(t)
 	ca := testpki.NewCA(t, "ca")
 	vol := &kubeSecretVolume{dir: t.TempDir()}
 	leaf := ca.Issue(t, testpki.LeafOptions{})
