@@ -28,6 +28,21 @@ var noInotifyFS = map[uint32]bool{
 	0x0BD00BD0: true, // Lustre
 }
 
+// inotifyInit creates the inotify instance; tests replace it.
+var inotifyInit = func() (int, error) {
+	return syscall.InotifyInit1(syscall.IN_CLOEXEC | syscall.IN_NONBLOCK)
+}
+
+// watchFallback, when set, is told why watchFiles fell back to polling. It is
+// a test hook.
+var watchFallback func(reason string, err error)
+
+func fallBack(reason string, err error) {
+	if watchFallback != nil {
+		watchFallback(reason, err)
+	}
+}
+
 // watchFiles watches the directories holding paths, and those holding their
 // symlink targets, and calls changed after a burst of events settles.
 // Watching directories rather than files is what makes the Kubernetes Secret
@@ -35,8 +50,10 @@ var noInotifyFS = map[uint32]bool{
 // atomically renames the ..data symlink in the volume's root. It falls back
 // to polling when inotify is unavailable or unsuitable.
 func watchFiles(ctx context.Context, paths []string, debounce, poll time.Duration, changed func()) {
-	fd, err := syscall.InotifyInit1(syscall.IN_CLOEXEC | syscall.IN_NONBLOCK)
+	fd, err := inotifyInit()
 	if err != nil {
+		// Typically EMFILE: the per-user inotify instance limit is reached.
+		fallBack("init", err)
 		pollFiles(ctx, poll, changed)
 		return
 	}
@@ -71,6 +88,7 @@ func watchFiles(ctx context.Context, paths []string, debounce, poll time.Duratio
 		return true
 	}
 	if !rewatch() {
+		fallBack("watch", nil)
 		pollFiles(ctx, poll, changed)
 		return
 	}
@@ -111,6 +129,7 @@ func watchFiles(ctx context.Context, paths []string, debounce, poll time.Duratio
 		case _, ok := <-events:
 			if !ok {
 				if ctx.Err() == nil {
+					fallBack("read", nil)
 					pollFiles(ctx, poll, changed)
 				}
 				return
@@ -119,6 +138,7 @@ func watchFiles(ctx context.Context, paths []string, debounce, poll time.Duratio
 		case <-timer.C:
 			// Symlink targets move on every Kubernetes update; follow them.
 			if !rewatch() {
+				fallBack("rewatch", nil)
 				changed()
 				pollFiles(ctx, poll, changed)
 				return
