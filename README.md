@@ -68,17 +68,17 @@ go run github.com/rossedman/keyload/examples/gencerts@latest -dir ./certs -rotat
 
 ## Examples
 
-Each example is a small runnable program: `go run ./examples/<name>` in a clone, or `go run github.com/rossedman/keyload/examples/<name>@latest` without one. The commands to try it are at the top of each file. `gencerts` makes throwaway certificates to try them with.
+Each example is a small runnable program with its own README ([all examples](examples)): `go run ./examples/<name>` in a clone, or `go run github.com/rossedman/keyload/examples/<name>@latest` without one. The commands to try it are at the top of each file. `gencerts` makes throwaway certificates to try them with.
 
 | Example | Shows |
 |---|---|
-| [`gencerts`](examples/gencerts/main.go) | Writes a demo CA and certificate, and rotates the certificate on demand |
-| [`quickstart`](examples/quickstart/main.go) | The quick start as a program: an mTLS server and a client calling it every second. Its [tests](examples/quickstart/keyload_test.go) show how to test code that uses keyload |
-| [`server`](examples/server/main.go) | An mTLS HTTPS server whose certificate and client CAs reload, with `SIGHUP` for on-demand reloads |
-| [`client`](examples/client/main.go) | An mTLS HTTP client whose certificate and trusted CAs reload |
-| [`proxy`](examples/proxy/main.go) | An HTTPS client behind an HTTP proxy, using Config mode |
-| [`metrics`](examples/metrics/main.go) | Prometheus metrics, structured reload logs and alerting rules |
-| [`kubernetes`](examples/kubernetes/app.yaml) | A cert-manager `Certificate` mounted into a Deployment |
+| [`gencerts`](examples/gencerts) | Writes a demo CA and certificate, and rotates the certificate on demand |
+| [`quickstart`](examples/quickstart) | The quick start as a program: an mTLS server and a client calling it every second. Its [tests](examples/quickstart/keyload_test.go) show how to test code that uses keyload |
+| [`server`](examples/server) | An mTLS HTTPS server whose certificate and client CAs reload, with `SIGHUP` for on-demand reloads |
+| [`client`](examples/client) | An mTLS HTTP client whose certificate and trusted CAs reload |
+| [`proxy`](examples/proxy) | An HTTPS client behind an HTTP proxy, using Config mode |
+| [`metrics`](examples/metrics) | Prometheus metrics, structured reload logs and alerting rules |
+| [`kubernetes`](examples/kubernetes) | A cert-manager `Certificate` mounted into a Deployment |
 | [`grpccreds`](grpccreds/example_test.go) | gRPC server and client with mutual TLS |
 
 There are also runnable snippets in [`example_test.go`](example_test.go), which appear on pkg.go.dev.
@@ -181,7 +181,7 @@ if err := r.Reload(context.Background()); err != nil {
 ## Good to know
 
 - **HTTP/2 servers.** Set `NextProtos: []string{"h2", "http/1.1"}` in the base config you pass to `ServerConfig`. `http.Server` adds `h2` to a copy of its config, which keyload doesn't see.
-- **HTTPS proxies.** `http.Transport` skips `DialTLSContext` for proxied HTTPS, so `ConfigureTransport` returns `ErrProxyConfigured`. Use `ClientConfig` there (see the [`proxy`](examples/proxy/main.go) example).
+- **HTTPS proxies.** `http.Transport` skips `DialTLSContext` for proxied HTTPS, so `ConfigureTransport` returns `ErrProxyConfigured`. Use `ClientConfig` there (see the [`proxy`](examples/proxy) example).
 - **Config mode** sets `InsecureSkipVerify` and verifies in `VerifyConnection` with the same options crypto/tls uses, on every handshake including resumed ones. It requires `ServerName`. `ConnectionState.VerifiedChains` is empty in this mode. It's tested against crypto/tls on thousands of generated chains; see [SECURITY.md](SECURITY.md).
 - **Session resumption** keeps working across reloads on servers. A resumed session's client certificate is re-checked against the current client CAs, so removing a CA also stops its clients from resuming.
 - **Existing connections** keep the certificates they were established with. Only new handshakes use reloaded material.

@@ -13,6 +13,8 @@ change the API.
   client, rotate and break certificates while they run, and test your code.
 - `examples/quickstart`: the quick start as a program, with tests that show
   how to test code that uses keyload using `crypto/x509` only.
+- A README for every example, with how to run it, real output and how it
+  works, and an index in `examples/README.md`.
 
 ### Changed
 
@@ -22,6 +24,9 @@ change the API.
 
 ### Fixed
 
+- The `metrics` example logged each added or removed certificate under a
+  repeated JSON key, so log parsers kept only the last one. They are now one
+  list.
 - `gencerts` gave every certificate serial number 1, so `-rotate` reused
   serials. Serials are now random, and its certificates are named `localhost`.
 

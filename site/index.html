@@ -459,13 +459,13 @@ tr := &amp;http.Transport{Proxy: http.ProxyFromEnvironment, TLSClientConfig: cfg
     <h2>Examples</h2>
     <p class="sub">Small runnable programs. The commands to try each one are at the top of its file, and <code>gencerts</code> makes throwaway certificates to try them with.</p>
     <div class="grid">
-      <a class="card" href="https://github.com/rossedman/keyload/blob/main/examples/quickstart/main.go"><div class="path">examples/quickstart</div><h3>Quick start</h3><p>An mTLS server and a client in one program. Its tests show how to test code that uses keyload.</p></a>
-      <a class="card" href="https://github.com/rossedman/keyload/blob/main/examples/server/main.go"><div class="path">examples/server</div><h3>mTLS server</h3><p>An HTTPS server whose certificate and client CAs reload, with <code>SIGHUP</code> for on-demand reloads.</p></a>
-      <a class="card" href="https://github.com/rossedman/keyload/blob/main/examples/client/main.go"><div class="path">examples/client</div><h3>mTLS client</h3><p>An HTTP client whose certificate and trusted CAs reload between requests.</p></a>
+      <a class="card" href="https://github.com/rossedman/keyload/tree/main/examples/quickstart"><div class="path">examples/quickstart</div><h3>Quick start</h3><p>An mTLS server and a client in one program. Its tests show how to test code that uses keyload.</p></a>
+      <a class="card" href="https://github.com/rossedman/keyload/tree/main/examples/server"><div class="path">examples/server</div><h3>mTLS server</h3><p>An HTTPS server whose certificate and client CAs reload, with <code>SIGHUP</code> for on-demand reloads.</p></a>
+      <a class="card" href="https://github.com/rossedman/keyload/tree/main/examples/client"><div class="path">examples/client</div><h3>mTLS client</h3><p>An HTTP client whose certificate and trusted CAs reload between requests.</p></a>
       <a class="card" href="https://github.com/rossedman/keyload/blob/main/grpccreds/example_test.go"><div class="path">grpccreds</div><h3>gRPC</h3><p>A gRPC server and client with mutual TLS from the same files.</p></a>
-      <a class="card" href="https://github.com/rossedman/keyload/blob/main/examples/proxy/main.go"><div class="path">examples/proxy</div><h3>Behind a proxy</h3><p>An HTTPS client going through an HTTP proxy, which needs Config mode.</p></a>
-      <a class="card" href="https://github.com/rossedman/keyload/blob/main/examples/metrics/main.go"><div class="path">examples/metrics</div><h3>Metrics and logs</h3><p>Prometheus metrics, structured reload logs and alerting rules.</p></a>
-      <a class="card" href="https://github.com/rossedman/keyload/blob/main/examples/kubernetes/app.yaml"><div class="path">examples/kubernetes</div><h3>cert-manager</h3><p>A <code>Certificate</code> renewed into a Secret and mounted into a Deployment.</p></a>
+      <a class="card" href="https://github.com/rossedman/keyload/tree/main/examples/proxy"><div class="path">examples/proxy</div><h3>Behind a proxy</h3><p>An HTTPS client going through an HTTP proxy, which needs Config mode.</p></a>
+      <a class="card" href="https://github.com/rossedman/keyload/tree/main/examples/metrics"><div class="path">examples/metrics</div><h3>Metrics and logs</h3><p>Prometheus metrics, structured reload logs and alerting rules.</p></a>
+      <a class="card" href="https://github.com/rossedman/keyload/tree/main/examples/kubernetes"><div class="path">examples/kubernetes</div><h3>cert-manager</h3><p>A <code>Certificate</code> renewed into a Secret and mounted into a Deployment.</p></a>
     </div>
   </div>
 </section>

@@ -44,11 +44,11 @@ func run(ctx context.Context, ln net.Listener, dir string, logger *slog.Logger) 
 		keyload.Name("api"),
 		keyload.OnReload(func(ev keyload.Event) {
 			attrs := []any{"generation", ev.Generation, "trigger", ev.Trigger, "result", ev.Result}
-			for _, c := range ev.Added {
-				attrs = append(attrs, slog.Group("added", "role", c.Role, "subject", c.Subject, "serial", c.Serial, "not_after", c.NotAfter))
+			if len(ev.Added) > 0 {
+				attrs = append(attrs, "added", certList(ev.Added))
 			}
-			for _, c := range ev.Removed {
-				attrs = append(attrs, slog.Group("removed", "role", c.Role, "subject", c.Subject, "serial", c.Serial))
+			if len(ev.Removed) > 0 {
+				attrs = append(attrs, "removed", certList(ev.Removed))
 			}
 			if ev.Err != nil {
 				logger.Error("tls reload rejected", append(attrs, "err", ev.Err)...)
@@ -78,6 +78,16 @@ func run(ctx context.Context, ln net.Listener, dir string, logger *slog.Logger) 
 	err = srv.Shutdown(shutdownCtx)
 	<-serveErr
 	return err
+}
+
+// certList turns certificates from an event into a list for the log, so
+// several certificates don't repeat the same JSON key.
+func certList(infos []keyload.CertInfo) []map[string]any {
+	out := make([]map[string]any, len(infos))
+	for i, c := range infos {
+		out[i] = map[string]any{"role": c.Role, "subject": c.Subject, "serial": c.Serial, "not_after": c.NotAfter}
+	}
+	return out
 }
 
 func cli(ctx context.Context, args []string) error {
