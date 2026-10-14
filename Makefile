@@ -1,4 +1,4 @@
-.PHONY: all lint test race cover bench fuzz site-serve bump
+.PHONY: all lint test race cover bench fuzz site-serve bump release
 
 all: lint test
 
@@ -34,3 +34,8 @@ site-serve:
 bump:
 	@test -n "$(VERSION)" || (echo "usage: make bump VERSION=vX.Y.Z"; exit 1)
 	cd grpccreds && go mod edit -require=github.com/rossedman/keyload@$(VERSION)
+
+# Tag a release and push the tags, which starts the Release workflow:
+# make release VERSION=v0.2.0
+release:
+	@./scripts/release.sh "$(VERSION)"
