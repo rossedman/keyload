@@ -19,7 +19,7 @@ echo oops > ./certs/tls.key                      # rejected; the last good certi
 go run ./examples/gencerts -dir ./certs -rotate  # back to a good certificate
 ```
 
-Without a clone, use `go run github.com/rossedman/keyload/examples/<name>@latest` instead of `go run ./examples/<name>`. `quickstart` is available that way from the release after v0.1.0.
+Without a clone, use `go run github.com/rossedman/keyload/examples/<name>@latest` instead of `go run ./examples/<name>`. `quickstart` is available that way from v0.1.1.
 
 | Flag | Default | |
 |---|---|---|
