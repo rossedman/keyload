@@ -247,6 +247,40 @@ func TestRetryRecoversFromMidWrite(t *testing.T) {
 	}
 }
 
+// Validity errors can't be fixed by waiting, so they fail without retrying;
+// errors a half-finished write could cause are retried.
+func TestRetriesOnlyWhatAWriterCouldFix(t *testing.T) {
+	ca := testpki.NewCA(t, "ca")
+	good := ca.Issue(t, testpki.LeafOptions{})
+	expired := ca.Issue(t, testpki.LeafOptions{NotBefore: time.Now().Add(-2 * time.Hour), NotAfter: time.Now().Add(-time.Hour)})
+	mismatched := leafMaterial(good, ca.PEM(), nil)
+	mismatched.Key = ca.Issue(t, testpki.LeafOptions{}).KeyPEM
+
+	for _, tt := range []struct {
+		name  string
+		m     Material
+		loads int
+	}{
+		{"expired", leafMaterial(expired, ca.PEM(), nil), 1},
+		{"key mismatch", mismatched, 4},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			src := &memSource{m: leafMaterial(good, ca.PEM(), nil)}
+			r := newReloader(t, src)
+			src.mu.Lock()
+			src.n = 0
+			src.mu.Unlock()
+			src.set(tt.m)
+			if err := r.Reload(context.Background()); err == nil {
+				t.Fatal("bad material accepted")
+			}
+			if src.n != tt.loads {
+				t.Errorf("source loaded %d times, want %d", src.n, tt.loads)
+			}
+		})
+	}
+}
+
 func TestEventDiff(t *testing.T) {
 	ca, ca2 := testpki.NewCA(t, "ca"), testpki.NewCA(t, "ca2")
 	old, next := ca.Issue(t, testpki.LeafOptions{}), ca2.Issue(t, testpki.LeafOptions{})

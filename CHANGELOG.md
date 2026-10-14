@@ -7,6 +7,24 @@ change the API.
 
 ## [Unreleased]
 
+### Added
+
+- [Getting started](docs/getting-started.md) guide: install, run a server and
+  client, rotate and break certificates while they run, and test your code.
+- `examples/quickstart`: the quick start as a program, with tests that show
+  how to test code that uses keyload using `crypto/x509` only.
+
+### Changed
+
+- Only failures a half-finished write could cause are retried. An expired,
+  not-yet-valid or too-short-lived certificate is rejected at once instead of
+  after three retries, so startup fails fast.
+
+### Fixed
+
+- `gencerts` gave every certificate serial number 1, so `-rotate` reused
+  serials. Serials are now random, and its certificates are named `localhost`.
+
 ## [0.1.0] - 2026-10-13
 
 The first release: reload TLS certificates, keys and CA bundles while a

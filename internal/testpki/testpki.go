@@ -15,12 +15,20 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"sync/atomic"
 	"testing"
 	"time"
 )
 
-var serial atomic.Int64
+// newSerial returns a random 63-bit serial number. Serials must be unique per
+// CA, including across processes: gencerts -rotate issues from a CA made by an
+// earlier run.
+func newSerial() *big.Int {
+	n, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 63))
+	if err != nil {
+		panic(err)
+	}
+	return n
+}
 
 // CA is a certificate authority.
 type CA struct {
@@ -36,7 +44,7 @@ func NewCA(tb testing.TB, name string) *CA {
 	tb.Helper()
 	key := NewKey(tb)
 	tmpl := &x509.Certificate{
-		SerialNumber:          big.NewInt(serial.Add(1)),
+		SerialNumber:          newSerial(),
 		Subject:               pkix.Name{CommonName: name},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
@@ -52,7 +60,7 @@ func (ca *CA) Intermediate(tb testing.TB, name string) *CA {
 	tb.Helper()
 	key := NewKey(tb)
 	tmpl := &x509.Certificate{
-		SerialNumber:          big.NewInt(serial.Add(1)),
+		SerialNumber:          newSerial(),
 		Subject:               pkix.Name{CommonName: name},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(180 * 24 * time.Hour),
@@ -69,11 +77,12 @@ func (ca *CA) PEM() []byte { return CertPEM(ca.Cert) }
 
 // LeafOptions customize Issue.
 type LeafOptions struct {
-	DNSNames  []string
-	IPs       []net.IP
-	NotBefore time.Time // default: an hour ago
-	NotAfter  time.Time // default: a day from now
-	EKU       []x509.ExtKeyUsage
+	CommonName string // default: "leaf"
+	DNSNames   []string
+	IPs        []net.IP
+	NotBefore  time.Time // default: an hour ago
+	NotAfter   time.Time // default: a day from now
+	EKU        []x509.ExtKeyUsage
 }
 
 // Leaf is an issued certificate and its key.
@@ -97,6 +106,9 @@ func (l *Leaf) TLS(tb testing.TB) tls.Certificate {
 // client auth; with no names it is valid for localhost and 127.0.0.1.
 func (ca *CA) Issue(tb testing.TB, o LeafOptions) *Leaf {
 	tb.Helper()
+	if o.CommonName == "" {
+		o.CommonName = "leaf"
+	}
 	if o.NotBefore.IsZero() {
 		o.NotBefore = time.Now().Add(-time.Hour)
 	}
@@ -112,8 +124,8 @@ func (ca *CA) Issue(tb testing.TB, o LeafOptions) *Leaf {
 	}
 	key := NewKey(tb)
 	tmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(serial.Add(1)),
-		Subject:      pkix.Name{CommonName: "leaf"},
+		SerialNumber: newSerial(),
+		Subject:      pkix.Name{CommonName: o.CommonName},
 		NotBefore:    o.NotBefore,
 		NotAfter:     o.NotAfter,
 		KeyUsage:     x509.KeyUsageDigitalSignature,
