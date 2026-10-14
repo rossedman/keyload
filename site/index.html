@@ -67,6 +67,7 @@ code, pre { font-family: var(--mono); font-size: 0.9em; }
   border-radius: 5px;
   padding: 0.05em 0.35em;
 }
+p code { overflow-wrap: anywhere; }
 .wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
 
 /* Nav */
@@ -235,6 +236,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
       <a class="opt" href="#reload">How it works</a>
       <a href="#simulator">Simulator</a>
       <a class="opt" href="#examples">Examples</a>
+      <a class="opt" href="https://github.com/rossedman/keyload/blob/main/docs/getting-started.md">Guide</a>
       <a href="https://pkg.go.dev/github.com/rossedman/keyload">API docs</a>
       <a href="https://github.com/rossedman/keyload">GitHub</a>
     </div>
@@ -283,17 +285,20 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space
       <div>
         <div class="step">2 · Use it</div>
         <div class="codeblock"><button class="copy">Copy</button><pre><span class="c">// Server: certificate and client CAs follow reloads.</span>
-srv := &amp;http.Server{TLSConfig: r.<span class="k">ServerConfig</span>(&amp;tls.Config{
+srv := &amp;http.Server{Addr: <span class="s">":8443"</span>, TLSConfig: r.<span class="k">ServerConfig</span>(&amp;tls.Config{
     ClientAuth: tls.RequireAndVerifyClientCert,
+    NextProtos: []<span class="k">string</span>{<span class="s">"h2"</span>, <span class="s">"http/1.1"</span>},
 })}
+<span class="k">go</span> srv.ListenAndServeTLS(<span class="s">""</span>, <span class="s">""</span>) <span class="c">// cert comes from TLSConfig</span>
 
 <span class="c">// Client: each connection uses the current files.</span>
-tr := &amp;http.Transport{}
+tr := &amp;http.Transport{ForceAttemptHTTP2: <span class="k">true</span>}
 <span class="k">if</span> err := r.<span class="k">ConfigureTransport</span>(tr, <span class="k">nil</span>); err != <span class="k">nil</span> {
     log.Fatal(err)
 }</pre></div>
       </div>
     </div>
+    <p class="sub" style="margin-top:20px">No certificates to try it with? <code>go run github.com/rossedman/keyload/examples/gencerts@latest -dir ./certs</code> writes a throwaway CA and a certificate for <code>localhost</code>; add <code>-rotate</code> to issue a new one. The <a href="https://github.com/rossedman/keyload/blob/main/docs/getting-started.md">getting started guide</a> walks through running, rotating, breaking and testing.</p>
     <p class="note">Mount a Kubernetes Secret as a whole directory. A <code>subPath</code> mount never sees updates, from keyload or anything else.</p>
   </div>
 </section>
@@ -454,6 +459,7 @@ tr := &amp;http.Transport{Proxy: http.ProxyFromEnvironment, TLSClientConfig: cfg
     <h2>Examples</h2>
     <p class="sub">Small runnable programs. The commands to try each one are at the top of its file, and <code>gencerts</code> makes throwaway certificates to try them with.</p>
     <div class="grid">
+      <a class="card" href="https://github.com/rossedman/keyload/blob/main/examples/quickstart/main.go"><div class="path">examples/quickstart</div><h3>Quick start</h3><p>An mTLS server and a client in one program. Its tests show how to test code that uses keyload.</p></a>
       <a class="card" href="https://github.com/rossedman/keyload/blob/main/examples/server/main.go"><div class="path">examples/server</div><h3>mTLS server</h3><p>An HTTPS server whose certificate and client CAs reload, with <code>SIGHUP</code> for on-demand reloads.</p></a>
       <a class="card" href="https://github.com/rossedman/keyload/blob/main/examples/client/main.go"><div class="path">examples/client</div><h3>mTLS client</h3><p>An HTTP client whose certificate and trusted CAs reload between requests.</p></a>
       <a class="card" href="https://github.com/rossedman/keyload/blob/main/grpccreds/example_test.go"><div class="path">grpccreds</div><h3>gRPC</h3><p>A gRPC server and client with mutual TLS from the same files.</p></a>

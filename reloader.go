@@ -197,7 +197,7 @@ func (r *Reloader) reload(ctx context.Context, trigger Trigger) error {
 		}
 		// Files may be mid-write (a new certificate next to the old key, a
 		// truncated bundle), so give the writer a moment and try again.
-		if err == nil || attempt >= r.opts.retries || ctx.Err() != nil {
+		if err == nil || !mayBeMidWrite(err) || attempt >= r.opts.retries || ctx.Err() != nil {
 			break
 		}
 		select {
@@ -237,6 +237,13 @@ func (r *Reloader) reload(ctx context.Context, trigger Trigger) error {
 	ev.Added, ev.Removed = diffSnapshots(prev, next)
 	r.emit(ev)
 	return nil
+}
+
+// mayBeMidWrite reports whether err could come from files caught in the
+// middle of being written, and so is worth retrying. Validity-window errors
+// can't change by waiting.
+func mayBeMidWrite(err error) bool {
+	return !errors.Is(err, ErrExpired) && !errors.Is(err, ErrNotYetValid) && !errors.Is(err, ErrExpiresTooSoon)
 }
 
 // expireOverlap drops retired CAs whose overlap window has ended from the

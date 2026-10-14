@@ -34,12 +34,14 @@ if err != nil {
 defer r.Close()
 
 // Server: the certificate and client CAs follow reloads.
-srv := &http.Server{TLSConfig: r.ServerConfig(&tls.Config{
+srv := &http.Server{Addr: ":8443", TLSConfig: r.ServerConfig(&tls.Config{
 	ClientAuth: tls.RequireAndVerifyClientCert,
+	NextProtos: []string{"h2", "http/1.1"}, // for HTTP/2
 })}
+go srv.ListenAndServeTLS("", "") // no file names: the certificate comes from TLSConfig
 
 // Client: every connection uses the current certificate and roots.
-tr := &http.Transport{}
+tr := &http.Transport{ForceAttemptHTTP2: true}
 if err := r.ConfigureTransport(tr, nil); err != nil {
 	log.Fatal(err)
 }
@@ -55,15 +57,23 @@ keyload.New(files, keyload.OnReload(func(ev keyload.Event) {
 }))
 ```
 
-📖 **Docs and an interactive reload simulator: https://rossedman.github.io/keyload/**
+No certificates to try it with? `gencerts` writes a throwaway CA and a certificate for `localhost`, laid out like a cert-manager Secret, and rotates it on demand. No clone needed:
+
+```sh
+go run github.com/rossedman/keyload/examples/gencerts@latest -dir ./certs          # ca.crt, tls.crt, tls.key
+go run github.com/rossedman/keyload/examples/gencerts@latest -dir ./certs -rotate  # a new certificate
+```
+
+📖 **[Getting started](docs/getting-started.md)** walks through installing keyload, running a server and client, rotating and breaking certificates while they run, and testing your code. **Docs and an interactive reload simulator: https://rossedman.github.io/keyload/**
 
 ## Examples
 
-Each example is a small runnable program (`go run ./examples/<name>`). The commands to try it are at the top of each file. `gencerts` makes throwaway certificates to try them with.
+Each example is a small runnable program: `go run ./examples/<name>` in a clone, or `go run github.com/rossedman/keyload/examples/<name>@latest` without one. The commands to try it are at the top of each file. `gencerts` makes throwaway certificates to try them with.
 
 | Example | Shows |
 |---|---|
 | [`gencerts`](examples/gencerts/main.go) | Writes a demo CA and certificate, and rotates the certificate on demand |
+| [`quickstart`](examples/quickstart/main.go) | The quick start as a program: an mTLS server and a client calling it every second. Its [tests](examples/quickstart/keyload_test.go) show how to test code that uses keyload |
 | [`server`](examples/server/main.go) | An mTLS HTTPS server whose certificate and client CAs reload, with `SIGHUP` for on-demand reloads |
 | [`client`](examples/client/main.go) | An mTLS HTTP client whose certificate and trusted CAs reload |
 | [`proxy`](examples/proxy/main.go) | An HTTPS client behind an HTTP proxy, using Config mode |
@@ -153,6 +163,20 @@ r, err := keyload.New(files,
 ```
 
 Events name the file and the reason for a rejection, and the subjects and serials that changed on success. They never include key material.
+
+## Testing your code
+
+Write the files to `t.TempDir()` and call `r.Reload(ctx)` to apply a change at once, instead of waiting for the file watcher:
+
+```go
+ca.issue(t, dir, time.Now().Add(24*time.Hour)) // write a new tls.crt and tls.key
+if err := r.Reload(context.Background()); err != nil {
+	t.Fatal(err)
+}
+// the next connection uses the new certificate
+```
+
+[`examples/quickstart/keyload_test.go`](examples/quickstart/keyload_test.go) is a complete test, and [`certs_test.go`](examples/quickstart/certs_test.go) generates the certificates with `crypto/x509` only, so you can copy it into your project.
 
 ## Good to know
 

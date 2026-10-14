@@ -42,8 +42,8 @@ func run(dir string, rotate bool, ttl time.Duration) error {
 		testpki.WriteFile(tb, d.File("ca.crt"), d.CA.PEM())
 		testpki.WriteFile(tb, d.File("ca.key"), testpki.KeyPEM(tb, d.CA.Key))
 	}
-	leaf := d.Rotate(tb, testpki.LeafOptions{NotAfter: time.Now().Add(ttl)})
-	fmt.Printf("wrote %s (serial %s, expires %s)\n", d.File("tls.crt"), leaf.Cert.SerialNumber, leaf.Cert.NotAfter.Format(time.RFC3339))
+	leaf := d.Rotate(tb, testpki.LeafOptions{CommonName: "localhost", NotAfter: time.Now().Add(ttl)})
+	fmt.Printf("wrote %s (serial %X, expires %s)\n", d.File("tls.crt"), leaf.Cert.SerialNumber, leaf.Cert.NotAfter.Format(time.RFC3339))
 	return nil
 }
 
