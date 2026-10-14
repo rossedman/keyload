@@ -45,6 +45,8 @@ site/                the docs site (one static page)
 - The handshake path must not allocate (`TestHotPathAllocations`).
 - Run `gofmt`. CI rejects unformatted code.
 - Update `README.md`, the site and `CHANGELOG.md` for user-visible changes.
+- Every example in `examples/` has a README: what it shows, how to run it,
+  real output, and how it works. Keep the output current when behavior changes.
 
 ## The website
 

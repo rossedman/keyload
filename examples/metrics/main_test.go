@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net"
@@ -91,6 +92,21 @@ func TestMetricsAndEvents(t *testing.T) {
 		if !strings.Contains(logs.String(), want) {
 			t.Errorf("logs missing %s:\n%s", want, logs)
 		}
+	}
+
+	// The first load adds the leaf and the CA: both must be in one list,
+	// not in repeated "added" keys that JSON parsers collapse.
+	first := strings.SplitN(logs.String(), "\n", 2)[0]
+	var ev struct {
+		Added []struct {
+			Role, Subject string
+		} `json:"added"`
+	}
+	if err := json.Unmarshal([]byte(first), &ev); err != nil {
+		t.Fatalf("log line is not JSON: %v\n%s", err, first)
+	}
+	if len(ev.Added) != 2 || strings.Count(first, `"added"`) != 1 {
+		t.Errorf("first event should list both certificates under one \"added\" key:\n%s", first)
 	}
 	if strings.Contains(logs.String(), "PRIVATE KEY") {
 		t.Error("logs contain key material")
