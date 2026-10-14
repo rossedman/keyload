@@ -59,13 +59,18 @@ The repository has two modules, released together with the same version:
 `github.com/rossedman/keyload/grpccreds` (tag `grpccreds/vX.Y.Z`).
 
 1. Rename `## [Unreleased]` in `CHANGELOG.md` to `## [X.Y.Z] - YYYY-MM-DD`
-   (it becomes the release notes) and add a fresh `[Unreleased]` section.
-2. Set `require github.com/rossedman/keyload vX.Y.Z` in `grpccreds/go.mod`
-   (`make bump VERSION=vX.Y.Z` does this), and merge.
-3. Either push a tag (`git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z`)
-   or run the **Release** workflow from the Actions tab with the version,
-   which tags the branch head for you.
+   (it becomes the release notes), add a fresh `[Unreleased]` section, run
+   `make bump VERSION=vX.Y.Z` to point `grpccreds/go.mod` at the new version,
+   and merge.
+2. Run `make release VERSION=vX.Y.Z`. It checks `origin/main`, creates both
+   tags on it and pushes them.
 
-The workflow checks the changelog and `grpccreds/go.mod`, runs the tests,
-creates both tags, and publishes a GitHub release with the changelog
-section as its notes. pkg.go.dev picks up the new version on its own.
+Pushing the tags starts the **Release** workflow, which runs the tests and
+publishes the GitHub release with the changelog section as its notes.
+pkg.go.dev picks up the new version on its own.
+
+Tags are created locally rather than by the workflow because the repository's
+tag ruleset only lets the maintainer create tags, and a personal repository's
+ruleset can't exempt GitHub Actions. Don't create releases in the GitHub UI:
+that makes only the `vX.Y.Z` tag, so the workflow stops and asks for
+`make release`.

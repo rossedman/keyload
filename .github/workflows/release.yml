@@ -1,18 +1,19 @@
 name: Release
 
-# Release by pushing a tag (git push origin v1.2.3), or run this workflow
-# manually with a version: it creates the tag on the chosen branch's head,
-# then releases it. Either way CHANGELOG.md must have a section for the
-# version (it becomes the release notes) and grpccreds/go.mod must require
-# that version of keyload. The grpccreds module is tagged grpccreds/v1.2.3 on
-# the same commit.
+# Runs when a version tag is pushed, which `make release VERSION=vX.Y.Z` does
+# (see CONTRIBUTING.md), or from the Actions tab for a version that is already
+# tagged, to publish or refresh its release. It creates no tags itself: the repository's tag
+# ruleset only lets the maintainer create them. It checks that both modules
+# are tagged on the same commit, runs the tests, and publishes the GitHub
+# release with the CHANGELOG.md section as its notes. If the release already
+# exists, for example one made in the GitHub UI, its notes are replaced.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Version to tag and release, e.g. v0.2.0"
+        description: "Existing version tag to publish, e.g. v0.2.0"
         required: true
 
 permissions:
@@ -27,36 +28,32 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: refs/tags/${{ env.TAG }}
           fetch-depth: 0
       - uses: actions/setup-go@v7
         with:
           go-version: stable
           cache-dependency-path: "**/go.sum"
 
-      - name: Check the version, changelog and grpccreds/go.mod
+      - name: Check the tags, changelog and grpccreds/go.mod
         run: |
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "Not a version tag: $TAG"; exit 1; }
           grep -q "^## \[${TAG#v}\]" CHANGELOG.md || { echo "CHANGELOG.md has no section for ${TAG#v}"; exit 1; }
           required=$(cd grpccreds && go mod edit -json | jq -r '.Require[] | select(.Path=="github.com/rossedman/keyload") | .Version')
-          [ "$required" = "$TAG" ] || { echo "grpccreds/go.mod requires keyload $required, want $TAG (run make bump VERSION=$TAG)"; exit 1; }
+          [ "$required" = "$TAG" ] || { echo "grpccreds/go.mod requires keyload $required, want $TAG"; exit 1; }
+          git rev-parse -q --verify "refs/tags/grpccreds/$TAG" >/dev/null || {
+            echo "::error::grpccreds/$TAG is missing. Tag releases with 'make release VERSION=$TAG', which pushes both tags."
+            exit 1
+          }
+          [ "$(git rev-list -n1 "grpccreds/$TAG")" = "$(git rev-list -n1 "$TAG")" ] || {
+            echo "::error::$TAG and grpccreds/$TAG are on different commits"
+            exit 1
+          }
 
       - name: Test
         run: |
           go test -race ./...
           (cd grpccreds && go test -race ./...)
-
-      - name: Tag
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          for tag in "$TAG" "grpccreds/$TAG"; do
-            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-              [ "$(git rev-list -n1 "$tag")" = "$(git rev-parse HEAD)" ] || { echo "$tag already exists on another commit"; exit 1; }
-              continue
-            fi
-            git tag -a "$tag" -m "keyload $tag" HEAD
-            git push origin "refs/tags/$tag"
-          done
 
       - name: Release notes from CHANGELOG.md
         run: |
@@ -83,9 +80,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          prerelease=""
-          [[ "$TAG" == *-* ]] && prerelease="--prerelease"
-          gh release create "$TAG" --title "keyload $TAG" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag $prerelease
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "keyload $TAG" --notes-file "$RUNNER_TEMP/notes.md"
+          else
+            prerelease=""
+            [[ "$TAG" == *-* ]] && prerelease="--prerelease"
+            gh release create "$TAG" --title "keyload $TAG" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag $prerelease
+          fi
 
       - name: Tell the Go module proxy
         run: |
