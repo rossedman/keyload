@@ -14,6 +14,9 @@ scanners:
     timeout: 10m
 rules:
   min_level: error
+  # Error-level findings from these become GitHub issues (the sarifix
+  # workflow); the Stop hook ignores this list and reports everything new.
+  allow: ["golangci-lint/*", "trivy/*", "semgrep/*"]
   deny: []
 paths:
   deny: ["vendor/**", "**/testdata/**"]
