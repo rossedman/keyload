@@ -29,6 +29,8 @@ jobs:
       - run: go vet ./...
       - run: go test -race -shuffle=on ./...
       - name: grpccreds
+        # grpccreds/go.mod requires Go 1.25; the root module supports 1.24.
+        if: matrix.go != '1.24'
         working-directory: grpccreds
         run: |
           go vet ./...
@@ -46,9 +48,14 @@ jobs:
           go test -coverpkg=./... -coverprofile=cover.out ./...
           { head -1 cover.out; grep -v '^mode:' cover.out | grep -v '/examples/'; } > cover-hand.out
           gate keyload cover-hand.out
-          cd grpccreds
+      - name: grpccreds coverage (must stay at or above 90%)
+        if: matrix.go != '1.24'
+        working-directory: grpccreds
+        run: |
           go test -coverprofile=cover.out ./...
-          gate grpccreds cover.out
+          total=$(go tool cover -func=cover.out | awk '/^total:/ {sub("%", "", $3); print $3}')
+          echo "grpccreds coverage: ${total}%"
+          awk -v t="$total" 'BEGIN { exit !(t >= 90) }' || { echo "::error::grpccreds coverage ${total}% is below 90%"; exit 1; }
 
   lint:
     runs-on: ubuntu-latest
