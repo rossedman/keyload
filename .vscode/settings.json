@@ -1,0 +1,12 @@
+{
+  "go.useLanguageServer": true,
+  "go.lintTool": "golangci-lint",
+  "gopls": {
+    "ui.diagnostic.staticcheck": true,
+    "ui.diagnostic.analyses": {
+      "unusedparams": true,
+      "unusedvariable": true
+    },
+    "build.directoryFilters": ["-site", "-docs"]
+  }
+}
