@@ -56,6 +56,8 @@ func run(ctx context.Context, ln net.Listener, dir string, logger *slog.Logger) 
 
 	srv := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
 			fmt.Fprintf(w, "hello, %s\n", req.TLS.PeerCertificates[0].Subject.CommonName)
 		}),
 		ReadHeaderTimeout: 10 * time.Second,

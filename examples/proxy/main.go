@@ -45,7 +45,7 @@ func newClient(target, proxy, caFile string) (*http.Client, *keyload.Reloader, e
 	}
 	cfg, err := r.ClientConfig(&tls.Config{ServerName: t.Hostname()})
 	if err != nil {
-		r.Close()
+		_ = r.Close()
 		return nil, nil, err
 	}
 	tr := &http.Transport{Proxy: http.ProxyURL(p), TLSClientConfig: cfg, ForceAttemptHTTP2: true}

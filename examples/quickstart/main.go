@@ -54,6 +54,8 @@ func run(ctx context.Context, ln net.Listener, dir string, interval time.Duratio
 	// Server: the certificate and client CAs follow reloads.
 	srv := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
 			fmt.Fprintf(w, "hello %s", req.TLS.PeerCertificates[0].Subject.CommonName)
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
@@ -88,7 +90,7 @@ func run(ctx context.Context, ln net.Listener, dir string, interval time.Duratio
 			continue
 		}
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		logger.Printf("%s over %s; server certificate serial %X", body, resp.Proto, resp.TLS.PeerCertificates[0].SerialNumber)
 		tr.CloseIdleConnections() // a new connection each time, so rotations show up
 	}
