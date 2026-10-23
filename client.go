@@ -22,7 +22,7 @@ import (
 // proxy. For HTTP/2 set base.NextProtos to []string{"h2", "http/1.1"}.
 func (r *Reloader) DialTLSContext(base *tls.Config) func(ctx context.Context, network, addr string) (net.Conn, error) {
 	if base == nil {
-		base = &tls.Config{}
+		base = &tls.Config{MinVersion: tls.VersionTLS12}
 	} else {
 		base = base.Clone()
 	}
@@ -60,7 +60,7 @@ func (r *Reloader) ConfigureTransport(t *http.Transport, base *tls.Config) error
 		}
 	}
 	if base == nil {
-		base = &tls.Config{}
+		base = &tls.Config{MinVersion: tls.VersionTLS12}
 	} else {
 		base = base.Clone()
 	}

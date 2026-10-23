@@ -32,7 +32,7 @@ type cachedConfig struct {
 func (r *Reloader) ServerConfig(base *tls.Config) *tls.Config {
 	var outer *tls.Config
 	if base == nil {
-		outer = &tls.Config{}
+		outer = &tls.Config{MinVersion: tls.VersionTLS12}
 	} else {
 		outer = base.Clone()
 	}

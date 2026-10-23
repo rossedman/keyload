@@ -33,7 +33,7 @@ func WithTLSConfig(base *tls.Config) Option {
 // its roots; as a server they present its leaf and verify clients with its
 // client CAs, according to the base config's ClientAuth.
 func New(r *keyload.Reloader, opts ...Option) credentials.TransportCredentials {
-	c := &creds{r: r, base: &tls.Config{}, cache: &cache{}}
+	c := &creds{r: r, base: &tls.Config{MinVersion: tls.VersionTLS12}, cache: &cache{}}
 	for _, opt := range opts {
 		opt(c)
 	}
