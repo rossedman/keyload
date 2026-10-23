@@ -4,6 +4,7 @@ package keyload
 
 import (
 	"context"
+	"math"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -14,8 +15,9 @@ const inotifyMask = syscall.IN_CREATE | syscall.IN_CLOSE_WRITE | syscall.IN_MOVE
 	syscall.IN_MOVED_FROM | syscall.IN_DELETE | syscall.IN_ATTRIB |
 	syscall.IN_DELETE_SELF | syscall.IN_MOVE_SELF
 
-// Filesystems where inotify does not see changes made elsewhere.
-var noInotifyFS = map[uint32]bool{
+// Filesystems where inotify does not see changes made elsewhere, by the
+// low 32 bits of Statfs_t.Type (int32 on some platforms, int64 on others).
+var noInotifyFS = map[int64]bool{
 	0x6969:     true, // NFS
 	0x65735546: true, // FUSE
 	0x517B:     true, // SMB
@@ -37,6 +39,8 @@ var inotifyInit = func() (int, error) {
 // a test hook.
 var watchFallback func(reason string, err error)
 
+// fallBack reports, through the watchFallback test hook, why watching fell
+// back to polling.
 func fallBack(reason string, err error) {
 	if watchFallback != nil {
 		watchFallback(reason, err)
@@ -62,7 +66,7 @@ func watchFiles(ctx context.Context, paths []string, debounce, poll time.Duratio
 	f := os.NewFile(uintptr(fd), "inotify")
 	defer f.Close()
 
-	watches := map[string]int{} // dir -> watch descriptor
+	watches := map[string]uint32{} // dir -> watch descriptor
 	rewatch := func() bool {
 		want := watchDirs(paths)
 		for dir := range want {
@@ -70,18 +74,21 @@ func watchFiles(ctx context.Context, paths []string, debounce, poll time.Duratio
 				continue
 			}
 			var st syscall.Statfs_t
-			if err := syscall.Statfs(dir, &st); err != nil || noInotifyFS[uint32(st.Type)] {
+			if err := syscall.Statfs(dir, &st); err != nil || noInotifyFS[int64(st.Type)&0xFFFFFFFF] {
 				return false
 			}
 			wd, err := syscall.InotifyAddWatch(fd, dir, inotifyMask)
 			if err != nil { // includes ENOSPC when the watch limit is reached
 				return false
 			}
-			watches[dir] = wd
+			if wd < 0 || int64(wd) > math.MaxUint32 {
+				return false // never happens: the kernel returns a uint32 range descriptor
+			}
+			watches[dir] = uint32(wd)
 		}
 		for dir, wd := range watches {
 			if !want[dir] {
-				_, _ = syscall.InotifyRmWatch(fd, uint32(wd))
+				_, _ = syscall.InotifyRmWatch(fd, wd)
 				delete(watches, dir)
 			}
 		}
@@ -116,7 +123,7 @@ func watchFiles(ctx context.Context, paths []string, debounce, poll time.Duratio
 	}()
 	go func() {
 		<-ctx.Done()
-		f.Close()
+		_ = f.Close()
 	}()
 
 	timer := time.NewTimer(time.Hour)
@@ -157,8 +164,8 @@ func watchDirs(paths []string) map[string]bool {
 			p = abs
 		}
 		dirs[filepath.Dir(p)] = true
-		if real, err := filepath.EvalSymlinks(p); err == nil {
-			dirs[filepath.Dir(real)] = true
+		if target, err := filepath.EvalSymlinks(p); err == nil {
+			dirs[filepath.Dir(target)] = true
 		}
 	}
 	return dirs

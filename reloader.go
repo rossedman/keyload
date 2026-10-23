@@ -15,6 +15,7 @@ import (
 // Trigger names what started a reload.
 type Trigger string
 
+// The triggers that can start a reload.
 const (
 	TriggerInitial Trigger = "initial"
 	TriggerManual  Trigger = "manual"
@@ -120,6 +121,7 @@ func New(src Source, opts ...Option) (*Reloader, error) {
 	return r, nil
 }
 
+// goFunc runs f in a goroutine that Close waits for.
 func (r *Reloader) goFunc(f func()) {
 	r.wg.Add(1)
 	go func() {
@@ -152,6 +154,8 @@ func (r *Reloader) Close() error {
 	return nil
 }
 
+// trigger queues a reload without blocking; if one is already queued, t is
+// dropped.
 func (r *Reloader) trigger(t Trigger) {
 	select {
 	case r.triggers <- t:
@@ -159,6 +163,7 @@ func (r *Reloader) trigger(t Trigger) {
 	}
 }
 
+// loop runs queued reloads until ctx is done.
 func (r *Reloader) loop(ctx context.Context) {
 	for {
 		select {
@@ -170,6 +175,10 @@ func (r *Reloader) loop(ctx context.Context) {
 	}
 }
 
+// reload reads and validates the material, retrying briefly while the files
+// may be mid-write, and swaps in a new snapshot if it is good and has
+// changed. It emits an event for a change, or for a failure once a snapshot
+// exists, and returns the failure, if any.
 func (r *Reloader) reload(ctx context.Context, trigger Trigger) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -273,6 +282,7 @@ func (r *Reloader) expireOverlap() {
 	r.emit(ev)
 }
 
+// emit passes ev to every OnReload callback.
 func (r *Reloader) emit(ev Event) {
 	for _, fn := range r.opts.onReload {
 		fn(ev)
@@ -327,6 +337,8 @@ func (r *Reloader) build(m *Material) (*Snapshot, map[[32]byte]retiredCert, map[
 	return s, rr, rc, nil
 }
 
+// pruneRetired returns the retired certificates whose overlap window has
+// not ended at now.
 func pruneRetired(retired map[[32]byte]retiredCert, now time.Time) map[[32]byte]retiredCert {
 	out := make(map[[32]byte]retiredCert, len(retired))
 	for k, v := range retired {
@@ -360,6 +372,9 @@ func overlap(prev, next []*x509.Certificate, retired map[[32]byte]retiredCert, n
 	return out
 }
 
+// buildPool returns a pool of the bundle plus the retired certificates still
+// in their overlap window, and the certificates it holds. It returns nil for
+// a nil bundle.
 func buildPool(bundle []*x509.Certificate, retired map[[32]byte]retiredCert) (*x509.CertPool, []*x509.Certificate) {
 	if bundle == nil {
 		return nil, nil
@@ -400,6 +415,8 @@ func (r *Reloader) scheduleOverlapExpiry() {
 	r.overlapTimer = time.AfterFunc(d, func() { r.trigger(TriggerOverlap) })
 }
 
+// diffSnapshots returns the certificates in next but not prev, and those in
+// prev but not next, sorted.
 func diffSnapshots(prev, next *Snapshot) (added, removed []CertInfo) {
 	type entry struct {
 		role Role
@@ -441,6 +458,7 @@ func diffSnapshots(prev, next *Snapshot) (added, removed []CertInfo) {
 	return added, removed
 }
 
+// sortInfos sorts s by role, subject and serial.
 func sortInfos(s []CertInfo) {
 	sort.Slice(s, func(i, j int) bool {
 		if s[i].Role != s[j].Role {

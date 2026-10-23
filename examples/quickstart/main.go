@@ -18,6 +18,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -54,14 +55,17 @@ func run(ctx context.Context, ln net.Listener, dir string, interval time.Duratio
 	// Server: the certificate and client CAs follow reloads.
 	srv := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			fmt.Fprintf(w, "hello %s", req.TLS.PeerCertificates[0].Subject.CommonName)
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			fmt.Fprintf(w, "hello %s", html.EscapeString(req.TLS.PeerCertificates[0].Subject.CommonName))
 		}),
+		ReadHeaderTimeout: 10 * time.Second,
 		TLSConfig: r.ServerConfig(&tls.Config{
 			ClientAuth: tls.RequireAndVerifyClientCert,
 			NextProtos: []string{"h2", "http/1.1"}, // HTTP/2
 		}),
 	}
-	go srv.ServeTLS(ln, "", "") // "" "": the certificate comes from TLSConfig
+	go func() { _ = srv.ServeTLS(ln, "", "") }() // "" "": the certificate comes from TLSConfig
 	defer srv.Close()
 
 	// Client: every connection uses the current certificate and roots.
@@ -87,12 +91,13 @@ func run(ctx context.Context, ln net.Listener, dir string, interval time.Duratio
 			continue
 		}
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		logger.Printf("%s over %s; server certificate serial %X", body, resp.Proto, resp.TLS.PeerCertificates[0].SerialNumber)
 		tr.CloseIdleConnections() // a new connection each time, so rotations show up
 	}
 }
 
+// cli parses args and runs the quickstart until ctx is done.
 func cli(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("quickstart", flag.ContinueOnError)
 	dir := fs.String("dir", "certs", "directory with tls.crt, tls.key and ca.crt")
@@ -108,6 +113,7 @@ func cli(ctx context.Context, args []string) error {
 	return run(ctx, ln, *dir, time.Second, log.New(os.Stderr, "", log.LstdFlags))
 }
 
+// main runs the quickstart until it is interrupted.
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	err := cli(ctx, os.Args[1:])

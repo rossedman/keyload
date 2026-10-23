@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -16,11 +17,13 @@ type stats struct {
 	lastSuccess                 atomic.Int64 // unix nanoseconds
 }
 
+// recordSuccess counts a successful reload that produced snap.
 func (s *stats) recordSuccess(snap *Snapshot) {
 	s.success.Add(1)
 	s.lastSuccess.Store(snap.LoadedAt.UnixNano())
 }
 
+// recordFailure counts a failed reload under its result.
 func (s *stats) recordFailure(r Result) {
 	if r == ResultInvalid {
 		s.invalid.Add(1)
@@ -58,6 +61,8 @@ func (r *Reloader) Stats() Stats {
 	}
 }
 
+// earliestExpiry returns the soonest NotAfter in certs, or the zero time
+// if certs is empty.
 func earliestExpiry(certs []*x509.Certificate) time.Time {
 	var t time.Time
 	for _, c := range certs {
@@ -92,6 +97,8 @@ func MetricsHandler(rs ...*Reloader) http.Handler {
 	})
 }
 
+// writeMetrics writes the metrics of every reloader in rs to out in the
+// Prometheus text format.
 func writeMetrics(out io.Writer, rs []*Reloader) error {
 	w := bufio.NewWriter(out)
 	type sample struct {
@@ -153,7 +160,13 @@ func writeMetrics(out io.Writer, rs []*Reloader) error {
 	return w.Flush()
 }
 
+// labelEscaper escapes the three characters the Prometheus text format
+// requires escaping in label values.
+var labelEscaper = strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`)
+
+// escapeLabel escapes s for use inside a quoted Prometheus label value. The
+// format allows only the escapes \\, \" and \n, and requires UTF-8, so
+// invalid bytes become U+FFFD.
 func escapeLabel(s string) string {
-	q := strconv.Quote(s)
-	return q[1 : len(q)-1]
+	return labelEscaper.Replace(strings.ToValidUTF8(s, "\uFFFD"))
 }

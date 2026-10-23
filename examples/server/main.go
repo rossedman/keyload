@@ -19,6 +19,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"html"
 	"log/slog"
 	"net"
 	"net/http"
@@ -56,8 +57,11 @@ func run(ctx context.Context, ln net.Listener, dir string, logger *slog.Logger) 
 
 	srv := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			fmt.Fprintf(w, "hello, %s\n", req.TLS.PeerCertificates[0].Subject.CommonName)
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			fmt.Fprintf(w, "hello, %s\n", html.EscapeString(req.TLS.PeerCertificates[0].Subject.CommonName))
 		}),
+		ReadHeaderTimeout: 10 * time.Second,
 		TLSConfig: r.ServerConfig(&tls.Config{
 			ClientAuth: tls.RequireAndVerifyClientCert,
 			NextProtos: []string{"h2", "http/1.1"},
@@ -74,7 +78,9 @@ func run(ctx context.Context, ln net.Listener, dir string, logger *slog.Logger) 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	err = srv.Shutdown(shutdownCtx)
-	<-serveErr // http.ErrServerClosed
+	if serr := <-serveErr; err == nil && !errors.Is(serr, http.ErrServerClosed) {
+		err = serr
+	}
 	return err
 }
 
@@ -88,6 +94,7 @@ func leafExpiry(added []keyload.CertInfo) string {
 	return "unchanged"
 }
 
+// cli parses args and serves HTTPS until ctx is done.
 func cli(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("server", flag.ContinueOnError)
 	addr := fs.String("addr", ":8443", "address to listen on")
@@ -104,6 +111,7 @@ func cli(ctx context.Context, args []string) error {
 	return run(ctx, ln, *dir, logger)
 }
 
+// main runs the server until it is interrupted.
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	err := cli(ctx, os.Args[1:])

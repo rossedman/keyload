@@ -7,6 +7,13 @@ change the API.
 
 ## [Unreleased]
 
+### Fixed
+
+- Metrics: a reloader `Name` containing a tab, carriage return, NUL,
+  non-printable character or invalid UTF-8 produced a label value that
+  Prometheus rejects, failing the whole scrape. Label values now use only the
+  escapes the Prometheus text format allows.
+
 ## [0.1.1] - 2026-10-14
 
 Documentation and fixes found by using keyload the way a new user would.

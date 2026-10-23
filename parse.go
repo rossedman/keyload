@@ -16,6 +16,7 @@ import (
 // Role names a piece of TLS material.
 type Role string
 
+// The roles of TLS material, as named in events and errors.
 const (
 	RoleLeaf      Role = "leaf"
 	RoleKey       Role = "key"
@@ -27,6 +28,7 @@ const (
 // keyload_reload_total metric.
 type Result string
 
+// The results of a reload attempt.
 const (
 	ResultSuccess   Result = "success"
 	ResultInvalid   Result = "invalid"
@@ -42,6 +44,7 @@ type ReloadError struct {
 	Err    error
 }
 
+// Error describes the failure, naming the result, role and origin.
 func (e *ReloadError) Error() string {
 	var b bytes.Buffer
 	b.WriteString("keyload: ")
@@ -61,8 +64,11 @@ func (e *ReloadError) Error() string {
 	return b.String()
 }
 
+// Unwrap returns the underlying error, so errors.Is matches the Err values.
 func (e *ReloadError) Unwrap() error { return e.Err }
 
+// invalid returns a ReloadError for material of role from origin that
+// failed validation with err.
 func invalid(role Role, origin string, err error) error {
 	return &ReloadError{Result: ResultInvalid, Role: role, Origin: origin, Err: err}
 }
@@ -105,6 +111,8 @@ func decodeCerts(data []byte) ([]*x509.Certificate, error) {
 	return certs, nil
 }
 
+// checkPEMKey reports ErrTruncatedPEM unless data holds exactly one complete
+// PEM block.
 func checkPEMKey(data []byte) error {
 	block, rest := pem.Decode(data)
 	if block == nil || bytes.Contains(rest, []byte("-----BEGIN")) {
@@ -116,8 +124,6 @@ func checkPEMKey(data []byte) error {
 type buildOptions struct {
 	now          time.Time
 	minRemaining time.Duration
-	requireChain bool
-	overlap      time.Duration
 }
 
 // parsed is material that passed validation, before overlap is applied.
@@ -190,6 +196,8 @@ func parseMaterial(m *Material, o buildOptions) (*parsed, error) {
 	return p, nil
 }
 
+// parseBundle decodes a PEM bundle of CA certificates, which must hold at
+// least one.
 func parseBundle(data []byte) ([]*x509.Certificate, error) {
 	certs, err := decodeCerts(data)
 	if err != nil {
@@ -201,6 +209,8 @@ func parseBundle(data []byte) ([]*x509.Certificate, error) {
 	return certs, nil
 }
 
+// isKeyMismatch reports whether err from tls.X509KeyPair means the key does
+// not match the certificate.
 func isKeyMismatch(err error) bool {
 	return bytes.Contains([]byte(err.Error()), []byte("does not match"))
 }
@@ -223,6 +233,8 @@ func verifyChain(p *parsed, pool *x509.CertPool, now time.Time) error {
 	return nil
 }
 
+// materialDigest hashes all four pieces of m, distinguishing a missing piece
+// from an empty one, so unchanged material can be detected cheaply.
 func materialDigest(m *Material) [32]byte {
 	h := sha256.New()
 	for _, b := range [][]byte{m.Cert, m.Key, m.Roots, m.ClientCAs} {
@@ -239,6 +251,7 @@ func materialDigest(m *Material) [32]byte {
 	return d
 }
 
+// certKey identifies a certificate by the hash of its DER encoding.
 func certKey(c *x509.Certificate) [32]byte { return sha256.Sum256(c.Raw) }
 
 // CertInfo identifies a certificate in events without exposing key material.
@@ -249,6 +262,7 @@ type CertInfo struct {
 	NotAfter time.Time
 }
 
+// certInfo describes c, in the given role, for events.
 func certInfo(role Role, c *x509.Certificate) CertInfo {
 	return CertInfo{Role: role, Subject: c.Subject.String(), Serial: hex.EncodeToString(c.SerialNumber.Bytes()), NotAfter: c.NotAfter}
 }

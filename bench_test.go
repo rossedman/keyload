@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"io"
 	"testing"
 	"time"
 
@@ -136,6 +137,38 @@ func BenchmarkReload(b *testing.B) {
 			i++
 			src.set(leafMaterial(leaves[i%2], ca.PEM(), ca.PEM()))
 			if err := r.Reload(context.Background()); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+}
+
+// BenchmarkWriteMetrics is the cost of one scrape: rendering every metric
+// family for one Reloader, and for several named Reloaders on one endpoint.
+func BenchmarkWriteMetrics(b *testing.B) {
+	r, _, _ := benchReloader(b)
+	b.Run("single", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			if err := r.WriteMetrics(io.Discard); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("named-x4", func(b *testing.B) {
+		ca := testpki.NewCA(b, "ca")
+		var rs []*Reloader
+		for _, name := range []string{"api", "grpc", "admin", `CN=odd "name"\`} {
+			r, err := New(&memSource{m: leafMaterial(ca.Issue(b, testpki.LeafOptions{}), ca.PEM(), ca.PEM())}, DisableWatch(), Name(name))
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.Cleanup(func() { r.Close() })
+			rs = append(rs, r)
+		}
+		b.ReportAllocs()
+		for b.Loop() {
+			if err := writeMetrics(io.Discard, rs); err != nil {
 				b.Fatal(err)
 			}
 		}

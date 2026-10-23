@@ -94,6 +94,7 @@ func (f Files) Load(context.Context) (*Material, error) {
 	return m, nil
 }
 
+// paths returns the non-empty file paths in f.
 func (f Files) paths() []string {
 	var ps []string
 	for _, p := range []string{f.Cert, f.Key, f.Roots, f.ClientCAs} {

@@ -64,7 +64,7 @@ func run(ctx context.Context, ln net.Listener, dir string, logger *slog.Logger) 
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", keyload.MetricsHandler(r))
-	srv := &http.Server{Handler: mux}
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 
@@ -76,7 +76,9 @@ func run(ctx context.Context, ln net.Listener, dir string, logger *slog.Logger) 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	err = srv.Shutdown(shutdownCtx)
-	<-serveErr
+	if serr := <-serveErr; err == nil && !errors.Is(serr, http.ErrServerClosed) {
+		err = serr
+	}
 	return err
 }
 
@@ -90,6 +92,7 @@ func certList(infos []keyload.CertInfo) []map[string]any {
 	return out
 }
 
+// cli parses args and serves /metrics until ctx is done.
 func cli(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("metrics", flag.ContinueOnError)
 	addr := fs.String("addr", ":9090", "address for /metrics")
@@ -104,6 +107,7 @@ func cli(ctx context.Context, args []string) error {
 	return run(ctx, ln, *dir, slog.New(slog.NewJSONHandler(os.Stderr, nil)))
 }
 
+// main runs the metrics server until it is interrupted.
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	err := cli(ctx, os.Args[1:])

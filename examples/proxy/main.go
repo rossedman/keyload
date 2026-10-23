@@ -45,13 +45,15 @@ func newClient(target, proxy, caFile string) (*http.Client, *keyload.Reloader, e
 	}
 	cfg, err := r.ClientConfig(&tls.Config{ServerName: t.Hostname()})
 	if err != nil {
-		r.Close()
+		_ = r.Close()
 		return nil, nil, err
 	}
 	tr := &http.Transport{Proxy: http.ProxyURL(p), TLSClientConfig: cfg, ForceAttemptHTTP2: true}
 	return &http.Client{Transport: tr, Timeout: 10 * time.Second}, r, nil
 }
 
+// run requests target through proxy, verifying the server with the CA
+// bundle in caFile, and copies the response body to out.
 func run(ctx context.Context, target, proxy, caFile string, out io.Writer) error {
 	client, r, err := newClient(target, proxy, caFile)
 	if err != nil {
@@ -71,6 +73,7 @@ func run(ctx context.Context, target, proxy, caFile string, out io.Writer) error
 	return err
 }
 
+// cli parses args and makes one request through the proxy.
 func cli(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("proxy", flag.ContinueOnError)
 	target := fs.String("url", "", "HTTPS URL to request")
@@ -85,6 +88,7 @@ func cli(ctx context.Context, args []string) error {
 	return run(ctx, *target, *proxy, *ca, os.Stdout)
 }
 
+// main runs one request and exits non-zero if it fails.
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	err := cli(ctx, os.Args[1:])

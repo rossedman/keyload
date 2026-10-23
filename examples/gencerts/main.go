@@ -25,8 +25,10 @@ import (
 	"github.com/rossedman/keyload/internal/testpki"
 )
 
+// run writes a CA and a localhost certificate to dir, or with rotate,
+// issues a new certificate from the CA already there.
 func run(dir string, rotate bool, ttl time.Duration) error {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
 	tb := testpki.NoTest
@@ -47,6 +49,7 @@ func run(dir string, rotate bool, ttl time.Duration) error {
 	return nil
 }
 
+// loadCA reads the CA certificate and key that an earlier run wrote to dir.
 func loadCA(dir string) (*testpki.CA, error) {
 	certPEM, err := os.ReadFile(filepath.Join(dir, "ca.crt"))
 	if err != nil {
@@ -76,6 +79,7 @@ func loadCA(dir string) (*testpki.CA, error) {
 	return &testpki.CA{Cert: cert, Key: signer}, nil
 }
 
+// main parses the flags and writes the certificates.
 func main() {
 	dir := flag.String("dir", "keyload-certs", "directory to write ca.crt, tls.crt and tls.key to")
 	rotate := flag.Bool("rotate", false, "issue a new certificate from the existing CA")

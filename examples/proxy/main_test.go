@@ -41,8 +41,8 @@ func connectProxy(t *testing.T) (*httptest.Server, *atomic.Int32) {
 			return
 		}
 		// rw.Reader may already hold bytes the client sent after CONNECT.
-		go func() { io.Copy(upstream, rw.Reader); upstream.Close() }()
-		go func() { io.Copy(conn, upstream); conn.Close() }()
+		go func() { _, _ = io.Copy(upstream, rw.Reader); upstream.Close() }()
+		go func() { _, _ = io.Copy(conn, upstream); conn.Close() }()
 	}))
 	t.Cleanup(srv.Close)
 	return srv, &tunnels
@@ -55,7 +55,7 @@ func TestThroughProxyWithReloadedRoots(t *testing.T) {
 	dir := testpki.NewDir(t, t.TempDir())
 	other := testpki.NewCA(t, "other")
 	backend := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		io.WriteString(w, "secret data")
+		_, _ = io.WriteString(w, "secret data")
 	}))
 	backend.TLS = &tls.Config{Certificates: []tls.Certificate{other.Issue(t, testpki.LeafOptions{}).TLS(t)}}
 	backend.StartTLS()

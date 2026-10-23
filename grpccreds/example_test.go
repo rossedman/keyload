@@ -51,7 +51,7 @@ func Example() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	go srv.Serve(ln)
+	go func() { _ = srv.Serve(ln) }()
 	defer srv.Stop()
 
 	// Client: presents its certificate and verifies the server with the

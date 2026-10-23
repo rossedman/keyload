@@ -11,6 +11,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       # Keep going when one version fails, so the others still report.
       fail-fast: false
@@ -18,8 +19,8 @@ jobs:
         # From the minimum in go.mod through the latest release.
         go: ["1.24", "1.25", "1.26", "1.27"]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ matrix.go }}
           cache-dependency-path: "**/go.sum"
@@ -35,10 +36,51 @@ jobs:
       - name: coverage (must stay at or above 90%)
         run: |
           # Show the output: a test that fails only here must be visible.
+          # Example programs are excluded: they are measured by their own
+          # tests, not counted towards the library.
+          gate() {
+            total=$(go tool cover -func="$2" | awk '/^total:/ {sub("%", "", $3); print $3}')
+            echo "$1 coverage: ${total}%"
+            awk -v t="$total" 'BEGIN { exit !(t >= 90) }' || { echo "::error::$1 coverage ${total}% is below 90%"; exit 1; }
+          }
           go test -coverpkg=./... -coverprofile=cover.out ./...
-          total=$(go tool cover -func=cover.out | awk '/^total:/ {sub("%", "", $3); print $3}')
-          echo "total coverage: ${total}%"
-          awk -v t="$total" 'BEGIN { exit !(t >= 90) }' || { echo "::error::coverage ${total}% is below 90%"; exit 1; }
+          { head -1 cover.out; grep -v '^mode:' cover.out | grep -v '/examples/'; } > cover-hand.out
+          gate keyload cover-hand.out
+          cd grpccreds
+          go test -coverprofile=cover.out ./...
+          gate grpccreds cover.out
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          cache-dependency-path: "**/go.sum"
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
+          working-directory: grpccreds
+      - name: doc comments
+        run: go run ./tools/doccheck ./...
+
+  vulncheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          cache-dependency-path: "**/go.sum"
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+      - working-directory: grpccreds
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
   other-os:
     # File watching falls back to polling off Linux; make sure everything
@@ -48,9 +90,10 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: stable
       - run: go vet ./...
@@ -61,20 +104,28 @@ jobs:
 
   fuzz:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: stable
-      - run: go test -run '^$' -fuzz FuzzParseMaterial -fuzztime 60s .
+      - name: fuzz every target for 30s
+        run: |
+          for target in $(go test -list '^Fuzz' . | grep '^Fuzz'); do
+            echo "::group::$target"
+            go test -run '^$' -fuzz "^${target}\$" -fuzztime 30s .
+            echo "::endgroup::"
+          done
 
   bench:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: stable
 
@@ -88,24 +139,28 @@ jobs:
       # regressions on the handshake path are gated by TestHotPathAllocations.
       - name: benchmark base branch
         if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          git worktree add ../base "origin/${{ github.base_ref }}"
+          git worktree add ../base "origin/$BASE_REF"
           cd ../base
-          if ls *_test.go >/dev/null 2>&1 && grep -lq 'func Benchmark' *_test.go; then
+          if ls ./*_test.go >/dev/null 2>&1 && grep -lq 'func Benchmark' ./*_test.go; then
             go test -run '^$' -bench . -benchmem -benchtime=200ms -count=6 . > "$GITHUB_WORKSPACE/bench-base.txt" || true
           fi
 
       - name: summarize
         if: always()
         continue-on-error: true
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          go install golang.org/x/perf/cmd/benchstat@latest
+          go install golang.org/x/perf/cmd/benchstat@be2c69fb417e05de5fec05c732911f4c5f172606
           {
             echo '## Benchmarks'
             echo
             echo '```'
             if [ -s bench-base.txt ]; then
-              echo "base: ${{ github.base_ref }}   new: this PR"
+              echo "base: $BASE_REF   new: this PR"
               "$(go env GOPATH)/bin/benchstat" base=bench-base.txt new=bench-new.txt
             else
               "$(go env GOPATH)/bin/benchstat" new=bench-new.txt
@@ -113,7 +168,7 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: benchmarks

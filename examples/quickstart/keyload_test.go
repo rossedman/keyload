@@ -38,7 +38,7 @@ func TestRotation(t *testing.T) {
 	}
 	defer r.Close()
 
-	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, "ok") }))
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "ok") }))
 	srv.EnableHTTP2 = true
 	srv.TLS = r.ServerConfig(&tls.Config{ClientAuth: tls.RequireAndVerifyClientCert, NextProtos: []string{"h2", "http/1.1"}})
 	srv.StartTLS()

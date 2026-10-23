@@ -5,14 +5,18 @@ Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT
 
 ## Development
 
-Requirements: Go 1.24 or newer, and `make`.
+Requirements: Go 1.24 or newer, `make` and
+[golangci-lint](https://golangci-lint.run/welcome/install/) v2.
 
 ```sh
+make check      # everything CI checks, except the long fuzz runs
 make            # lint and test both modules
 make race       # tests with the race detector
-make cover      # coverage; CI requires 90% or more
+make cover      # coverage of library code; must be 90% or more
+make doccheck   # every function, method and package has a doc comment
+make vuln       # govulncheck on both modules
 make bench      # benchmarks
-make fuzz       # fuzz the PEM parsing for a minute
+make fuzz       # fuzz every target for 30s (FUZZTIME=1m to change)
 ```
 
 Try the examples with throwaway certificates:
@@ -43,10 +47,25 @@ site/                the docs site (one static page)
 - Add tests for behaviour changes; `go test -race ./...` must pass and
   coverage must stay at or above 90%.
 - The handshake path must not allocate (`TestHotPathAllocations`).
-- Run `gofmt`. CI rejects unformatted code.
+- Run `gofmt`. CI rejects unformatted code, and `golangci-lint` findings.
+- Every function and method, exported or not, has a doc comment starting
+  with its name (`make doccheck`).
 - Update `README.md`, the site and `CHANGELOG.md` for user-visible changes.
 - Every example in `examples/` has a README: what it shows, how to run it,
   real output, and how it works. Keep the output current when behavior changes.
+
+## Critical paths
+
+These need a benchmark, and the ones that take outside input need a fuzz
+target or property test. Add to the list when you add code like this.
+
+| Path | Code | Benchmark | Fuzz or property test |
+| --- | --- | --- | --- |
+| Parsing PEM material | `parseMaterial`, `parseBundle`, `checkPEMKey` (`parse.go`) | `BenchmarkReload` | `FuzzParseMaterial` |
+| Chain verification | `verifyChain` (`parse.go`), `verifyServer` (`client.go`) | `BenchmarkVerify` | `TestConfigModeMatchesStdlib` (2,000 generated chains against crypto/tls) |
+| Reload | `Reloader.reload`, `build`, `diffSnapshots` (`reloader.go`) | `BenchmarkReload` | `FuzzParseMaterial` covers its input |
+| Handshake hot path | `Current`, `ServerConfig`, `ClientConfig`, `DialTLSContext` | `BenchmarkCurrent`, `BenchmarkServerHandshakeConfig`, `BenchmarkDialerConfig` | none: no outside input; allocations gated by `TestHotPathAllocations` |
+| Metrics output | `writeMetrics`, `escapeLabel` (`metrics.go`) | `BenchmarkWriteMetrics` | `FuzzEscapeLabel`, `FuzzWriteMetrics` |
 
 ## The website
 

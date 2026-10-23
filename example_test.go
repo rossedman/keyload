@@ -112,7 +112,7 @@ func ExampleReloader_ConfigureTransport() {
 	defer os.RemoveAll(dir.Path)
 
 	// A server whose certificate comes from dir's CA.
-	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	srv.TLS = &tls.Config{Certificates: []tls.Certificate{dir.Leaf.TLS(testpki.NoTest)}}
 	srv.StartTLS()
 	defer srv.Close()
@@ -141,7 +141,7 @@ func ExampleReloader_ConfigureTransport() {
 func ExampleReloader_ClientConfig() {
 	dir := setup()
 	defer os.RemoveAll(dir.Path)
-	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	srv.TLS = &tls.Config{Certificates: []tls.Certificate{dir.Leaf.TLS(testpki.NoTest)}}
 	srv.StartTLS()
 	defer srv.Close()
