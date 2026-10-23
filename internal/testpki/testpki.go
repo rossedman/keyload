@@ -186,8 +186,13 @@ var NoTest testing.TB = noTest{}
 
 type noTest struct{ testing.TB }
 
-func (noTest) Helper()                      {}
-func (noTest) Fatal(args ...any)            { panic(fmt.Sprint(args...)) }
+// Helper does nothing.
+func (noTest) Helper() {}
+
+// Fatal panics with args.
+func (noTest) Fatal(args ...any) { panic(fmt.Sprint(args...)) }
+
+// Fatalf panics with the formatted message.
 func (noTest) Fatalf(f string, args ...any) { panic(fmt.Sprintf(f, args...)) }
 
 // Dir is a directory of PEM files laid out like a cert-manager Secret:

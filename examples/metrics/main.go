@@ -92,6 +92,7 @@ func certList(infos []keyload.CertInfo) []map[string]any {
 	return out
 }
 
+// cli parses args and serves /metrics until ctx is done.
 func cli(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("metrics", flag.ContinueOnError)
 	addr := fs.String("addr", ":9090", "address for /metrics")
@@ -106,6 +107,7 @@ func cli(ctx context.Context, args []string) error {
 	return run(ctx, ln, *dir, slog.New(slog.NewJSONHandler(os.Stderr, nil)))
 }
 
+// main runs the metrics server until it is interrupted.
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	err := cli(ctx, os.Args[1:])

@@ -24,6 +24,7 @@ type options struct {
 	retryDelay time.Duration
 }
 
+// defaultOptions returns the options used before any Option is applied.
 func defaultOptions() options {
 	return options{now: time.Now, retries: 3, retryDelay: 100 * time.Millisecond}
 }

@@ -94,6 +94,7 @@ func run(ctx context.Context, ln net.Listener, dir string, interval time.Duratio
 	}
 }
 
+// cli parses args and runs the quickstart until ctx is done.
 func cli(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("quickstart", flag.ContinueOnError)
 	dir := fs.String("dir", "certs", "directory with tls.crt, tls.key and ca.crt")
@@ -109,6 +110,7 @@ func cli(ctx context.Context, args []string) error {
 	return run(ctx, ln, *dir, time.Second, log.New(os.Stderr, "", log.LstdFlags))
 }
 
+// main runs the quickstart until it is interrupted.
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	err := cli(ctx, os.Args[1:])

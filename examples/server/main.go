@@ -91,6 +91,7 @@ func leafExpiry(added []keyload.CertInfo) string {
 	return "unchanged"
 }
 
+// cli parses args and serves HTTPS until ctx is done.
 func cli(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("server", flag.ContinueOnError)
 	addr := fs.String("addr", ":8443", "address to listen on")
@@ -107,6 +108,7 @@ func cli(ctx context.Context, args []string) error {
 	return run(ctx, ln, *dir, logger)
 }
 
+// main runs the server until it is interrupted.
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	err := cli(ctx, os.Args[1:])

@@ -37,6 +37,8 @@ var inotifyInit = func() (int, error) {
 // a test hook.
 var watchFallback func(reason string, err error)
 
+// fallBack reports, through the watchFallback test hook, why watching fell
+// back to polling.
 func fallBack(reason string, err error) {
 	if watchFallback != nil {
 		watchFallback(reason, err)

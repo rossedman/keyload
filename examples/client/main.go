@@ -61,6 +61,7 @@ func run(ctx context.Context, url, dir string, interval time.Duration, out io.Wr
 	}
 }
 
+// get requests url and copies the response body to out.
 func get(ctx context.Context, client *http.Client, url string, out io.Writer) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -76,6 +77,7 @@ func get(ctx context.Context, client *http.Client, url string, out io.Writer) er
 	return nil
 }
 
+// cli parses args and requests the URL every interval until ctx is done.
 func cli(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("client", flag.ContinueOnError)
 	url := fs.String("url", "https://localhost:8443/", "URL to request")
@@ -87,6 +89,7 @@ func cli(ctx context.Context, args []string) error {
 	return run(ctx, *url, *dir, *interval, os.Stdout)
 }
 
+// main runs the client until it is interrupted.
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	err := cli(ctx, os.Args[1:])
