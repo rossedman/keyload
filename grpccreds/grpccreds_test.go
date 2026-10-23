@@ -45,7 +45,7 @@ func newReloader(t *testing.T, src keyload.Source) *keyload.Reloader {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { r.Close() })
+	t.Cleanup(func() { _ = r.Close() })
 	return r
 }
 
@@ -67,7 +67,7 @@ func check(ctx context.Context, addr string, r *keyload.Reloader) error {
 	if err != nil {
 		return err
 	}
-	defer cc.Close()
+	defer func() { _ = cc.Close() }()
 	_, err = healthpb.NewHealthClient(cc).Check(ctx, &healthpb.HealthCheckRequest{})
 	return err
 }
