@@ -40,6 +40,7 @@ To test without waiting for a renewal, force one with `cmctl renew api`, or dele
 - **`rotationPolicy: Always`** gives each renewal a new private key. keyload handles that, since it reloads the key with the certificate.
 - **`MinRemaining(time.Hour)`** refuses a certificate that's about to expire, for example if a renewal is stuck and an old Secret is restored.
 - **`OverlapWindow(24*time.Hour)`** keeps the old CA trusted for a day after the issuer's CA changes, so pods that haven't reloaded yet keep connecting.
+- **Security context:** the Deployment runs as non-root with a read-only root filesystem and no capabilities. keyload only reads the mounted files, so it needs nothing more. Your image must be able to run as a non-root user.
 - **Alerting:** the `prometheus.io/*` annotations assume your app serves `keyload.MetricsHandler` on port 9090; see the [metrics](../metrics) example.
 
 Source: [`app.yaml`](app.yaml)
