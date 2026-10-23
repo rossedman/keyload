@@ -18,6 +18,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
@@ -56,7 +57,7 @@ func run(ctx context.Context, ln net.Listener, dir string, interval time.Duratio
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			w.Header().Set("X-Content-Type-Options", "nosniff")
-			fmt.Fprintf(w, "hello %s", req.TLS.PeerCertificates[0].Subject.CommonName)
+			fmt.Fprintf(w, "hello %s", html.EscapeString(req.TLS.PeerCertificates[0].Subject.CommonName))
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		TLSConfig: r.ServerConfig(&tls.Config{
