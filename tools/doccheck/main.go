@@ -66,9 +66,12 @@ func expand(arg string) ([]string, error) {
 	if root == "" || root == "..." {
 		root, recursive = ".", true
 	}
-	info, err := os.Stat(root)
+	// Walk through an fs.FS so the argument only ever names the tree to
+	// check, never a path joined from it.
+	fsys := os.DirFS(root)
+	info, err := fs.Stat(fsys, ".")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", root, err)
 	}
 	if !info.IsDir() {
 		return nil, fmt.Errorf("%s is not a directory", root)
@@ -77,17 +80,17 @@ func expand(arg string) ([]string, error) {
 		return []string{root}, nil
 	}
 	var dirs []string
-	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	err = fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if !d.IsDir() {
 			return nil
 		}
-		if path != root && skipDir(d.Name()) {
-			return filepath.SkipDir
+		if path != "." && skipDir(d.Name()) {
+			return fs.SkipDir
 		}
-		dirs = append(dirs, path)
+		dirs = append(dirs, filepath.Join(root, filepath.FromSlash(path)))
 		return nil
 	})
 	return dirs, err
