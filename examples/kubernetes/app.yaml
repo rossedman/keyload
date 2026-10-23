@@ -11,17 +11,21 @@
 #   }, keyload.MinRemaining(time.Hour), keyload.OverlapWindow(24*time.Hour))
 #
 # Mount the whole Secret as a directory. A subPath mount never sees updates.
+#
+# Everything lives in the demo namespace (kubectl create namespace demo).
+# The Certificate must be in the same namespace as the pod that mounts it.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: api
+  namespace: demo
 spec:
   secretName: api-tls
   duration: 24h
   renewBefore: 8h
   dnsNames:
-    - api.default.svc
-    - api.default.svc.cluster.local
+    - api.demo.svc
+    - api.demo.svc.cluster.local
   usages:
     - server auth
     - client auth
@@ -36,6 +40,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: api
+  namespace: demo
 spec:
   replicas: 2
   selector:
