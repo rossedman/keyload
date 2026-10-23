@@ -13,9 +13,11 @@ scanners:
     command: ["semgrep", "scan", "--quiet", "--metrics=off", "--config", "p/default", "--sarif-output={out}", "{dir}"]
     timeout: 10m
 rules:
-  min_level: error
-  # Error-level findings from these become GitHub issues (the sarifix
-  # workflow); the Stop hook ignores this list and reports everything new.
+  # Every level, notes included, becomes an issue: the backlog is small, and
+  # code scanning shows the same findings anyway.
+  min_level: note
+  # Findings from these become GitHub issues (the sarifix workflow); the
+  # Stop hook ignores this list and reports everything new.
   allow: ["golangci-lint/*", "trivy/*", "semgrep/*"]
   deny: []
 paths:
