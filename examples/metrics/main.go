@@ -64,7 +64,7 @@ func run(ctx context.Context, ln net.Listener, dir string, logger *slog.Logger) 
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", keyload.MetricsHandler(r))
-	srv := &http.Server{Handler: mux}
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 
@@ -76,7 +76,9 @@ func run(ctx context.Context, ln net.Listener, dir string, logger *slog.Logger) 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	err = srv.Shutdown(shutdownCtx)
-	<-serveErr
+	if serr := <-serveErr; err == nil && !errors.Is(serr, http.ErrServerClosed) {
+		err = serr
+	}
 	return err
 }
 

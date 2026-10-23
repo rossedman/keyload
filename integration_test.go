@@ -190,7 +190,7 @@ func TestServerModeResumption(t *testing.T) {
 
 func TestDialerModeFollowsReloads(t *testing.T) {
 	ca, ca2 := testpki.NewCA(t, "ca"), testpki.NewCA(t, "ca2")
-	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, "ok") }))
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "ok") }))
 	srvLeaf := ca2.Issue(t, testpki.LeafOptions{}).TLS(t)
 	srv.TLS = &tls.Config{Certificates: []tls.Certificate{srvLeaf}}
 	srv.StartTLS()
@@ -378,7 +378,7 @@ func testRotationUnderLoad(t *testing.T, h2 bool) {
 	srvR := newReloader(t, srvFiles, OverlapWindow(time.Hour))
 	cliR := newReloader(t, cliFiles, OverlapWindow(time.Hour))
 
-	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, "ok") }))
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "ok") }))
 	srv.EnableHTTP2 = h2
 	base := &tls.Config{ClientAuth: tls.RequireAndVerifyClientCert}
 	if h2 {

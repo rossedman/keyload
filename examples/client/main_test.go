@@ -54,7 +54,7 @@ func TestClientFollowsCARotation(t *testing.T) {
 	// The server's certificate comes from a CA the client doesn't trust yet.
 	newCA := testpki.NewCA(t, "new CA")
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		io.WriteString(w, "hello "+r.TLS.PeerCertificates[0].Subject.CommonName)
+		_, _ = io.WriteString(w, "hello "+r.TLS.PeerCertificates[0].Subject.CommonName)
 	}))
 	clientCAs := x509.NewCertPool()
 	clientCAs.AddCert(dir.CA.Cert)

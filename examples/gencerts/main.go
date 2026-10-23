@@ -26,7 +26,7 @@ import (
 )
 
 func run(dir string, rotate bool, ttl time.Duration) error {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
 	tb := testpki.NoTest

@@ -56,12 +56,13 @@ func run(ctx context.Context, ln net.Listener, dir string, interval time.Duratio
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			fmt.Fprintf(w, "hello %s", req.TLS.PeerCertificates[0].Subject.CommonName)
 		}),
+		ReadHeaderTimeout: 10 * time.Second,
 		TLSConfig: r.ServerConfig(&tls.Config{
 			ClientAuth: tls.RequireAndVerifyClientCert,
 			NextProtos: []string{"h2", "http/1.1"}, // HTTP/2
 		}),
 	}
-	go srv.ServeTLS(ln, "", "") // "" "": the certificate comes from TLSConfig
+	go func() { _ = srv.ServeTLS(ln, "", "") }() // "" "": the certificate comes from TLSConfig
 	defer srv.Close()
 
 	// Client: every connection uses the current certificate and roots.

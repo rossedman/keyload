@@ -15,6 +15,7 @@ import (
 // Trigger names what started a reload.
 type Trigger string
 
+// The triggers that can start a reload.
 const (
 	TriggerInitial Trigger = "initial"
 	TriggerManual  Trigger = "manual"

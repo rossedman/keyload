@@ -16,6 +16,7 @@ import (
 // Role names a piece of TLS material.
 type Role string
 
+// The roles of TLS material, as named in events and errors.
 const (
 	RoleLeaf      Role = "leaf"
 	RoleKey       Role = "key"
@@ -27,6 +28,7 @@ const (
 // keyload_reload_total metric.
 type Result string
 
+// The results of a reload attempt.
 const (
 	ResultSuccess   Result = "success"
 	ResultInvalid   Result = "invalid"
@@ -116,8 +118,6 @@ func checkPEMKey(data []byte) error {
 type buildOptions struct {
 	now          time.Time
 	minRemaining time.Duration
-	requireChain bool
-	overlap      time.Duration
 }
 
 // parsed is material that passed validation, before overlap is applied.

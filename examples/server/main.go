@@ -58,6 +58,7 @@ func run(ctx context.Context, ln net.Listener, dir string, logger *slog.Logger) 
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			fmt.Fprintf(w, "hello, %s\n", req.TLS.PeerCertificates[0].Subject.CommonName)
 		}),
+		ReadHeaderTimeout: 10 * time.Second,
 		TLSConfig: r.ServerConfig(&tls.Config{
 			ClientAuth: tls.RequireAndVerifyClientCert,
 			NextProtos: []string{"h2", "http/1.1"},
@@ -74,7 +75,9 @@ func run(ctx context.Context, ln net.Listener, dir string, logger *slog.Logger) 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	err = srv.Shutdown(shutdownCtx)
-	<-serveErr // http.ErrServerClosed
+	if serr := <-serveErr; err == nil && !errors.Is(serr, http.ErrServerClosed) {
+		err = serr
+	}
 	return err
 }
 

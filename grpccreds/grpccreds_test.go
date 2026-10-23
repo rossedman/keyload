@@ -57,7 +57,7 @@ func startServer(t *testing.T, r *keyload.Reloader) string {
 	}
 	s := grpc.NewServer(grpc.Creds(grpccreds.New(r, grpccreds.WithTLSConfig(&tls.Config{ClientAuth: tls.RequireAndVerifyClientCert}))))
 	healthpb.RegisterHealthServer(s, health.NewServer())
-	go s.Serve(ln)
+	go func() { _ = s.Serve(ln) }()
 	t.Cleanup(s.Stop)
 	return ln.Addr().String()
 }
