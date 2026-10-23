@@ -47,7 +47,7 @@ func TestWatchFallsBackWhenInotifyIsExhausted(t *testing.T) {
 	var mu sync.Mutex
 	prevPoll, prevHook := pollFallback, watchFallback
 	pollFallback = 50 * time.Millisecond
-	watchFallback = func(reason string, err error) {
+	watchFallback = func(reason string, _ error) {
 		mu.Lock()
 		reasons = append(reasons, reason)
 		mu.Unlock()
