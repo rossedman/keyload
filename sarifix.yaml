@@ -1,0 +1,19 @@
+version: 1
+scanners:
+  # Same linters and config as CI and make lint.
+  - name: golangci-lint
+    command: ["golangci-lint", "run", "--output.sarif.path={out}", "./..."]
+    workdir: "{dir}"
+  # Misconfigurations in the Kubernetes example (examples/kubernetes).
+  - name: trivy
+    match: ["Trivy"]
+    command: ["trivy", "config", "--quiet", "--format", "sarif", "-o", "{out}", "{dir}"]
+  - name: semgrep
+    match: ["Semgrep OSS", "Semgrep"]
+    command: ["semgrep", "scan", "--quiet", "--metrics=off", "--config", "p/default", "--sarif-output={out}", "{dir}"]
+    timeout: 10m
+rules:
+  min_level: error
+  deny: []
+paths:
+  deny: ["vendor/**", "**/testdata/**"]
