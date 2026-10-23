@@ -47,9 +47,16 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9090"
     spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
       containers:
         - name: api
           image: ghcr.io/example/api:1.0.0 # your app, using keyload
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
           ports:
             - { name: https, containerPort: 8443 }
             - { name: metrics, containerPort: 9090 }
