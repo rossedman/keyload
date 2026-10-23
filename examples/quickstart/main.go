@@ -61,6 +61,7 @@ func run(ctx context.Context, ln net.Listener, dir string, interval time.Duratio
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		TLSConfig: r.ServerConfig(&tls.Config{
+			MinVersion: tls.VersionTLS12,
 			ClientAuth: tls.RequireAndVerifyClientCert,
 			NextProtos: []string{"h2", "http/1.1"}, // HTTP/2
 		}),
@@ -70,7 +71,7 @@ func run(ctx context.Context, ln net.Listener, dir string, interval time.Duratio
 
 	// Client: every connection uses the current certificate and roots.
 	tr := &http.Transport{ForceAttemptHTTP2: true}
-	if err := r.ConfigureTransport(tr, &tls.Config{ServerName: "localhost"}); err != nil {
+	if err := r.ConfigureTransport(tr, &tls.Config{MinVersion: tls.VersionTLS12, ServerName: "localhost"}); err != nil {
 		return err
 	}
 	defer tr.CloseIdleConnections()

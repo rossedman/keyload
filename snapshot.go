@@ -34,7 +34,7 @@ type Snapshot struct {
 func (s *Snapshot) ServerConfig(base *tls.Config) *tls.Config {
 	var cfg *tls.Config
 	if base == nil {
-		cfg = &tls.Config{}
+		cfg = &tls.Config{MinVersion: tls.VersionTLS12}
 	} else {
 		cfg = base.Clone()
 	}
@@ -57,7 +57,7 @@ func (s *Snapshot) ServerConfig(base *tls.Config) *tls.Config {
 func (s *Snapshot) ClientConfig(base *tls.Config) *tls.Config {
 	var cfg *tls.Config
 	if base == nil {
-		cfg = &tls.Config{}
+		cfg = &tls.Config{MinVersion: tls.VersionTLS12}
 	} else {
 		cfg = base.Clone()
 	}

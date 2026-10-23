@@ -63,6 +63,7 @@ func run(ctx context.Context, ln net.Listener, dir string, logger *slog.Logger) 
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		TLSConfig: r.ServerConfig(&tls.Config{
+			MinVersion: tls.VersionTLS12,
 			ClientAuth: tls.RequireAndVerifyClientCert,
 			NextProtos: []string{"h2", "http/1.1"},
 		}),

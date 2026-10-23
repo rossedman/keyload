@@ -43,7 +43,7 @@ func newClient(target, proxy, caFile string) (*http.Client, *keyload.Reloader, e
 	if err != nil {
 		return nil, nil, err
 	}
-	cfg, err := r.ClientConfig(&tls.Config{ServerName: t.Hostname()})
+	cfg, err := r.ClientConfig(&tls.Config{MinVersion: tls.VersionTLS12, ServerName: t.Hostname()})
 	if err != nil {
 		_ = r.Close()
 		return nil, nil, err
