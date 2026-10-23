@@ -1,0 +1,3 @@
+go test fuzz v1
+string("CN=a­b")
+string("leaf")
