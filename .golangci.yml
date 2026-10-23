@@ -1,0 +1,30 @@
+version: "2"
+
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - revive
+    - gosec
+    - misspell
+  exclusions:
+    presets:
+      # Unchecked Close, Fprintf, os.RemoveAll and similar.
+      - std-error-handling
+      - common-false-positives
+    rules:
+      # Tests build throwaway PKI with fixed paths, weak
+      # randomness and deliberately insecure clients.
+      - path: _test\.go
+        linters: [gosec]
+      # Example programs read the paths and log the values
+      # their user gives them.
+      - path: ^examples/
+        linters: [gosec]
+        text: "G304|G706"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
