@@ -7,7 +7,7 @@ A [cert-manager](https://cert-manager.io) `Certificate` renewed into a Secret, a
 [`app.yaml`](app.yaml) assumes:
 
 - cert-manager is installed, with a `ClusterIssuer` named `internal-ca`. Change `issuerRef` to match yours.
-- Your app's image, in place of `ghcr.io/example/api:1.0.0`, uses keyload like this:
+- Your app's image, in place of `gcr.io/example/api:1.0.0`, uses keyload like this:
 
 ```go
 r, err := keyload.New(keyload.Files{
