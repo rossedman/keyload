@@ -22,3 +22,7 @@ rules:
   deny: []
 paths:
   deny: ["vendor/**", "**/testdata/**"]
+limits:
+  # One issue per rule, except that rules a scanner reports in only one file
+  # (Trivy's checks on the Kubernetes example) share one issue for that file.
+  group_by: auto

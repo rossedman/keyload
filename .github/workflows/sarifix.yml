@@ -40,7 +40,7 @@ jobs:
       - name: Note the start time
         id: start
         run: echo "time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
-      - uses: rossedman/sarifix@0147bd865e6aec0892fce765f16d48b7ac5eb273 # v0.2.3
+      - uses: rossedman/sarifix@a68573573d46cb636458de7c0c43dbb79ec51ce8 # v0.3.0
         with:
           queue: ${{ vars.SARIFIX_QUEUE }}
 

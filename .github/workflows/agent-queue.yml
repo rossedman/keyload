@@ -82,7 +82,7 @@ jobs:
           install-only: true
 
       # sarifix issues list "Done when" commands that run sarifix.
-      - uses: rossedman/sarifix@0147bd865e6aec0892fce765f16d48b7ac5eb273 # v0.2.3
+      - uses: rossedman/sarifix@a68573573d46cb636458de7c0c43dbb79ec51ce8 # v0.3.0
         if: steps.pick.outputs.number != ''
         with:
           mode: install
