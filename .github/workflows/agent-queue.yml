@@ -1,25 +1,37 @@
 name: agent-queue
 
-# Labeling an issue agent-ready hands it to Claude, which implements it on a
-# branch and opens a pull request. The sarifix workflow labels its issues with
-# GITHUB_TOKEN, which can't trigger workflows, so the nightly run picks those
-# up: the oldest agent-ready issue first.
+# Hands an issue to Claude, which implements it on a branch and opens a pull
+# request. A run starts when:
+# - an issue is opened with the sarifix label (by a person; the sarifix
+#   workflow dispatches this workflow for the issues it opens, because issues
+#   created with GITHUB_TOKEN can't trigger workflows),
+# - someone labels an issue agent-ready,
+# - this workflow is dispatched with an issue number, or
+# - the nightly run finds an agent-ready issue nobody has picked up.
 on:
   issues:
-    types: [labeled]
+    types: [opened, labeled]
   schedule:
     - cron: "17 7 * * *"
   workflow_dispatch:
+    inputs:
+      issue:
+        description: Issue number to implement (empty picks the oldest agent-ready issue)
+        required: false
+        type: string
 
 permissions: {}
 
 jobs:
   implement:
-    if: github.event_name != 'issues' || github.event.label.name == 'agent-ready'
+    if: >-
+      github.event_name != 'issues' ||
+      (github.event.action == 'labeled' && github.event.label.name == 'agent-ready') ||
+      (github.event.action == 'opened' && contains(github.event.issue.labels.*.name, 'sarifix'))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     concurrency:
-      group: agent-queue-${{ github.event.issue.number || 'scheduled' }}
+      group: agent-queue-${{ github.event.issue.number || inputs.issue || 'scheduled' }}
       cancel-in-progress: false
     permissions:
       contents: write
@@ -33,13 +45,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          EVENT_ISSUE: ${{ github.event.issue.number }}
+          EVENT_ISSUE: ${{ github.event.issue.number || inputs.issue }}
         run: |
           set -euo pipefail
           n="${EVENT_ISSUE:-}"
-          if [ -z "$n" ]; then
-            n=$(gh issue list --label agent-ready --state open --json number,createdAt \
-              --jq 'sort_by(.createdAt) | .[0].number // empty')
+          if [ -n "$n" ]; then
+            # Skip an issue that is closed or already handed to Claude, so a
+            # dispatch and a label on the same issue don't start two runs.
+            busy=$(gh issue view "$n" --json state,labels \
+              --jq '.state != "OPEN" or any(.labels[].name; . == "agent-working" or . == "agent-failed")')
+            if [ "$busy" = "true" ]; then echo "Issue #$n is closed or already taken."; exit 0; fi
+          else
+            n=$(gh issue list --label agent-ready --state open --json number,createdAt,labels \
+              --jq '[.[] | select(all(.labels[].name; . != "agent-working" and . != "agent-failed"))]
+                | sort_by(.createdAt) | .[0].number // empty')
           fi
           if [ -z "$n" ]; then echo "No agent-ready issues."; exit 0; fi
           gh issue edit "$n" --add-label agent-working --remove-label agent-ready

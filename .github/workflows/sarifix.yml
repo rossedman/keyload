@@ -1,9 +1,9 @@
 name: sarifix
 
-# On main, weekly and on demand: scan, upload to code scanning, and keep one
-# issue per batch of findings, keeping one labeled agent-ready for Claude
-# when the SARIFIX_QUEUE variable is set. On pull requests: report the
-# findings the change introduced.
+# On main, weekly and on demand: scan, upload to code scanning, keep one
+# issue per batch of findings, and hand each new issue to Claude through the
+# agent-queue workflow. On pull requests: report the findings the change
+# introduced.
 on:
   push:
     branches: [main]
@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      actions: read
+      actions: write # dispatch agent-queue (also covers the upload's read)
       security-events: write
       issues: write
     steps:
@@ -37,6 +37,25 @@ jobs:
         with:
           go-version: stable
           cache-dependency-path: "**/go.sum"
+      - name: Note the start time
+        id: start
+        run: echo "time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
       - uses: rossedman/sarifix@0147bd865e6aec0892fce765f16d48b7ac5eb273 # v0.2.3
         with:
           queue: ${{ vars.SARIFIX_QUEUE }}
+
+      # Issues created with GITHUB_TOKEN can't trigger the issues event, but
+      # GITHUB_TOKEN may dispatch a workflow, so start a run for each new one.
+      - name: Hand new issues to Claude
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SINCE: ${{ steps.start.outputs.time }}
+        run: |
+          set -euo pipefail
+          for n in $(gh issue list --label sarifix --state open --limit 100 --json number,createdAt \
+            --jq '.[] | select(.createdAt >= env.SINCE) | .number'); do
+            echo "Dispatching agent-queue for #$n"
+            gh workflow run agent-queue.yml -f issue="$n"
+          done
