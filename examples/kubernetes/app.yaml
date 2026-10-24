@@ -57,7 +57,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: api
-          image: ghcr.io/example/api:1.0.0 # your app, using keyload
+          image: gcr.io/example/api:1.0.0 # your app, using keyload
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
