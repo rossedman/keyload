@@ -17,7 +17,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"flag"
-	"html"
+	"html/template"
 	"io"
 	"log"
 	"net"
@@ -56,7 +56,7 @@ func run(ctx context.Context, ln net.Listener, dir string, interval time.Duratio
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			w.Header().Set("X-Content-Type-Options", "nosniff")
-			_, _ = io.WriteString(w, "hello "+html.EscapeString(req.TLS.PeerCertificates[0].Subject.CommonName))
+			_ = greeting.Execute(w, req.TLS.PeerCertificates[0].Subject.CommonName)
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		TLSConfig: r.ServerConfig(&tls.Config{
@@ -112,6 +112,9 @@ func cli(ctx context.Context, args []string) error {
 	defer ln.Close()
 	return run(ctx, ln, *dir, time.Second, log.New(os.Stderr, "", log.LstdFlags))
 }
+
+// greeting renders the client's certificate name; html/template escapes it.
+var greeting = template.Must(template.New("greeting").Parse("hello {{.}}"))
 
 // main runs the quickstart until it is interrupted.
 func main() {
