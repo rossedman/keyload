@@ -18,8 +18,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"flag"
-	"html"
-	"io"
+	"html/template"
 	"log/slog"
 	"net"
 	"net/http"
@@ -59,7 +58,7 @@ func run(ctx context.Context, ln net.Listener, dir string, logger *slog.Logger) 
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			w.Header().Set("X-Content-Type-Options", "nosniff")
-			_, _ = io.WriteString(w, "hello, "+html.EscapeString(req.TLS.PeerCertificates[0].Subject.CommonName)+"\n")
+			_ = greeting.Execute(w, req.TLS.PeerCertificates[0].Subject.CommonName)
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		TLSConfig: r.ServerConfig(&tls.Config{
@@ -111,6 +110,9 @@ func cli(ctx context.Context, args []string) error {
 	logger.Info("listening", "addr", ln.Addr().String(), "dir", *dir)
 	return run(ctx, ln, *dir, logger)
 }
+
+// greeting renders the client's certificate name; html/template escapes it.
+var greeting = template.Must(template.New("greeting").Parse("hello, {{.}}\n"))
 
 // main runs the server until it is interrupted.
 func main() {
